@@ -1,0 +1,67 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "requester": {
+      "description": "Menerima request fitur dan mengkoordinasikan workflow planning dengan planner dan reviewer",
+      "mode": "primary",
+      "permission": {
+        "task": {
+          "planner": "allow",
+          "reviewer": "allow",
+          "implementator": "allow"
+        }
+      }
+    },
+    "planner": {
+      "description": "Membuat dan merevisi file planning (.md) berdasarkan request fitur. Menjawab pertanyaan dari reviewer dengan merevisi plan.md. Wajib menulis di ./planning/.",
+      "mode": "subagent",
+      "permission": {
+        "edit": "allow",
+        "write": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow"
+        },
+        "todowrite": "allow"
+      }
+    },
+    "implementator": {
+      "description": "Mengimplementasikan kode dari planning yang sudah final dan ter-review oleh reviewer. Wajib mengikuti plan.md section Task Breakdown secara berurutan. Membaca plan.md sebelum mulai menulis kode.",
+      "mode": "subagent",
+      "permission": {
+        "edit": "allow",
+        "write": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "bash": "allow",
+        "todowrite": "allow"
+      }
+    },
+    "reviewer": {
+      "description": "Mengkritis planning yang dibuat planner DENGAN SANGAT DETAIL. Wajib membaca seluruh plan.md baris demi baris setiap putaran, mengaudit 12 aspek (tujuan, scope, pendekatan, risiko, dependency, task breakdown, open questions, acceptance criteria, konsistensi, asumsi, kelengkapan, realistis). Wajib ajukan minimal 3 pertanyaan kritis PER PUTARAN dengan referensi eksplisit ke section/baris plan.md. Jika masih ada kelemahan/ambiguitas/asumsi terselubung, invoke @planner untuk revisi. Hanya boleh nyatakan 'sempurna' jika SEMUA kriteria terpenuhi (section terisi, istilah jelas, asumsi eksplisit, edge case terdaftar, task granular, dependency ber-versi, AC measurable, OQ terjawab). Maksimal 5 putaran, lalu lanjut dengan catatan toleransi + daftar kelemahan tersisa.",
+      "mode": "subagent",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git status*": "allow"
+        },
+        "webfetch": "allow",
+        "task": {
+          "planner": "allow"
+        }
+      }
+    }
+  }
+}
