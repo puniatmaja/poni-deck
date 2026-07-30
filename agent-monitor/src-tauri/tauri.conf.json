@@ -1,0 +1,37 @@
+{
+  "productName": "Agent Monitor",
+  "version": "0.1.0",
+  "identifier": "com.opencode.agent-monitor",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Agent Monitor",
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "width": 340,
+        "height": 260,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}
