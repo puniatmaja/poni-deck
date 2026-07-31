@@ -6,7 +6,9 @@
 
   const appWindow = getCurrentWebviewWindow();
 
-  const WIDTH = 340;
+  const DEFAULT_WIDTH = 340;
+  const MIN_WIDTH = 160;
+  const MAX_WIDTH = 640;
   const EXPANDED_HEIGHT = 260;
 
   const STATUS_PRIORITY = ['error', 'waiting_confirmation', 'working', 'running', 'idle'];
@@ -49,9 +51,21 @@
     return path;
   }
 
-  async function resizeWindow(height) {
+  let currentHeight = EXPANDED_HEIGHT;
+  let currentWidth = DEFAULT_WIDTH;
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  async function resizeWindow(height, preserveCenterX = false) {
+    currentHeight = height;
     try {
-      await invoke('resize_window', { width: WIDTH, height });
+      await invoke('resize_window', {
+        width: currentWidth,
+        height,
+        preserve_center_x: preserveCenterX,
+      });
     } catch (e) {
       console.error('Failed to resize window:', e);
     }
@@ -62,59 +76,139 @@
     return Math.ceil(bar?.getBoundingClientRect().height ?? 42);
   }
 
-  function setClip(open, animate = true) {
-    if (!islandEl) return;
-    if (!animate) islandEl.style.transition = 'none';
-    islandEl.classList.toggle('open', open);
-    islandEl.classList.toggle('closed', !open);
-    if (!animate) {
-      void islandEl.offsetHeight;
-      islandEl.style.transition = '';
+  function animateResize(from, to, duration, gen) {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      const step = (now) => {
+        if (gen !== undefined && gen !== generation) {
+          resolve();
+          return;
+        }
+        const p = Math.min(1, (now - t0) / duration);
+        const ease = 1 - Math.pow(1 - p, 3);
+        resizeWindow(Math.round(from + (to - from) * ease));
+        if (p < 1) requestAnimationFrame(step);
+        else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  let dragStart = null;
+
+  function startDrag(e) {
+    if (isResizing) return;
+    if (e.target.closest('[data-no-drag]')) return;
+    if (e.button !== 0) return;
+    dragStart = { x: e.clientX, y: e.clientY };
+    window.addEventListener('mousemove', onBarMove);
+    window.addEventListener('mouseup', onBarUp);
+  }
+
+  function onBarMove(e) {
+    if (!dragStart) return;
+    if (Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 4) {
+      cleanupDrag();
+      appWindow.startDragging();
     }
   }
 
-  function startDrag(e) {
-    if (e.target.closest('[data-no-drag]')) return;
-    appWindow.startDragging();
+  function onBarUp() {
+    cleanupDrag();
+  }
+
+  function cleanupDrag() {
+    dragStart = null;
+    window.removeEventListener('mousemove', onBarMove);
+    window.removeEventListener('mouseup', onBarUp);
   }
 
   async function expand() {
     const gen = ++generation;
     clearTimeout(phaseTimer);
     isLocked = true;
-    // Snap closed before growing so the larger window never flashes the panel.
-    setClip(false, false);
-    await resizeWindow(EXPANDED_HEIGHT);
+    await animateResize(currentHeight, EXPANDED_HEIGHT, 320, gen);
     if (gen !== generation) return;
     showPanel = true;
-    setClip(true);
   }
 
   function collapse() {
     if (!isLocked) return;
-    generation++;
+    const gen = ++generation;
     clearTimeout(phaseTimer);
     showPanel = false;
-    // Keep the bar opaque while the panel fades out, then collapse the clip.
+    // Let the panel fade out, then shrink the window down to the bar.
     phaseTimer = setTimeout(() => {
+      if (gen !== generation) return;
+      const h = collapsedHeight();
       isLocked = false;
-      setClip(false);
-      phaseTimer = setTimeout(() => {
-        const h = collapsedHeight();
-        resizeWindow(h).then(() => setClip(true, false));
-      }, 420);
+      animateResize(currentHeight, h, 320, gen);
     }, 250);
   }
 
   function toggleLock() {
+    if (isResizing) return;
     if (isLocked) collapse();
     else expand();
   }
 
-  async function openFolder(path) {
+  let resizeStart = null;
+  let isResizing = false;
+
+  function startResize(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isLocked) return;
+    isResizing = true;
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    resizeStart = {
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startWidth: currentWidth,
+      dir: handle.dataset.dir,
+      pendingWidth: null,
+      rafId: null,
+    };
+  }
+
+  function onResizeMove(e) {
+    if (!isResizing || !resizeStart || e.pointerId !== resizeStart.pointerId) return;
+    const dx = (e.clientX - resizeStart.startClientX) * window.devicePixelRatio;
+    const delta = resizeStart.dir === 'left' ? -dx : dx;
+    resizeStart.pendingWidth = Math.round(clamp(resizeStart.startWidth + delta, MIN_WIDTH, MAX_WIDTH));
+    if (resizeStart.rafId == null) {
+      resizeStart.rafId = requestAnimationFrame(applyPendingWidth);
+    }
+  }
+
+  function applyPendingWidth() {
+    if (!isResizing || !resizeStart) return;
+    resizeStart.rafId = null;
+    const newWidth = resizeStart.pendingWidth;
+    if (newWidth == null) return;
+    if (newWidth === currentWidth) return;
+    currentWidth = newWidth;
+    resizeWindow(currentHeight, true);
+  }
+
+  function endResize(e) {
+    if (!isResizing) return;
+    if (resizeStart && resizeStart.rafId != null) {
+      cancelAnimationFrame(resizeStart.rafId);
+      resizeStart.rafId = null;
+      applyPendingWidth();
+    }
+    if (resizeStart && e.currentTarget?.hasPointerCapture?.(resizeStart.pointerId)) {
+      e.currentTarget.releasePointerCapture(resizeStart.pointerId);
+    }
+    isResizing = false;
+    resizeStart = null;
+  }
+
+  async function openFolder(agent) {
     try {
-      const state = await invoke('get_config');
-      await invoke('open_path', { path, action: state.click_action || 'terminal' });
+      await invoke('open_for_launcher', { path: agent.working_dir, launcher: agent.launcher ?? '' });
     } catch (e) {
       console.error('Failed to open path:', e);
     }
@@ -136,9 +230,7 @@
     });
 
     // Start collapsed: shrink the window so transparent area doesn't block clicks.
-    setClip(false, false);
     await resizeWindow(collapsedHeight());
-    setClip(true, false);
   });
 
   onDestroy(() => {
@@ -148,11 +240,31 @@
 </script>
 
 <div
-  class="dynamic-island closed"
+  class="dynamic-island"
   class:expanded={isExpanded}
   bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
+    <span class="resize-handle resize-handle--left"
+          data-no-drag
+          data-dir="left"
+          on:pointerdown={startResize}
+          on:pointermove={onResizeMove}
+          on:pointerup={endResize}
+          on:pointercancel={endResize}
+          on:lostpointercapture={endResize}
+          on:click|stopPropagation
+          on:contextmenu|preventDefault></span>
+    <span class="resize-handle resize-handle--right"
+          data-no-drag
+          data-dir="right"
+          on:pointerdown={startResize}
+          on:pointermove={onResizeMove}
+          on:pointerup={endResize}
+          on:pointercancel={endResize}
+          on:lostpointercapture={endResize}
+          on:click|stopPropagation
+          on:contextmenu|preventDefault></span>
     <span class="indicator {aggStatus}" class:active={count > 0}></span>
     <span class="status-text">{displayText}</span>
   </div>
@@ -171,7 +283,7 @@
     {:else}
       <div class="agent-list">
           {#each agents as agent (agent.pid)}
-            <div class="agent-item" on:click|stopPropagation={() => openFolder(agent.working_dir)}>
+            <div class="agent-item" on:click|stopPropagation={() => openFolder(agent)}>
               <div class="agent-info">
                 <span class="agent-pid">PID {agent.pid}</span>
                 <span class="agent-path">{formatPath(agent.working_dir)}</span>
@@ -179,6 +291,9 @@
               <div class="agent-status">
                 <span class="status-dot {agent.state}"></span>
                 <span class="status-label">{STATUS_LABELS[agent.state] || agent.state}</span>
+                {#if agent.launcher}
+                  <span class="launcher-badge">{agent.launcher === 'vscode' ? 'VSCode' : 'Terminal'}</span>
+                {/if}
               </div>
             </div>
           {/each}
@@ -212,15 +327,6 @@
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    transition: clip-path 0.35s ease;
-  }
-
-  .dynamic-island.closed {
-    clip-path: inset(0 0 220px 0 round 8px);
-  }
-
-  .dynamic-island.open {
-    clip-path: none;
   }
 
   .compact-bar {
@@ -230,6 +336,7 @@
     gap: 8px;
     padding: 10px 24px;
     min-height: 40px;
+    position: relative;
     transition: opacity 0.2s ease, border-radius 0.25s ease, background 0.25s ease, border 0.25s ease;
   }
 
@@ -239,6 +346,39 @@
     background: transparent;
     backdrop-filter: none;
     border-color: transparent;
+  }
+
+  .resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .compact-bar:hover .resize-handle {
+    opacity: 0.5;
+  }
+
+  .resize-handle:hover,
+  .resize-handle:active {
+    opacity: 1;
+  }
+
+  .resize-handle--left {
+    left: 0;
+  }
+
+  .resize-handle--right {
+    right: 0;
+  }
+
+  .compact-bar.expanded .resize-handle {
+    display: none;
   }
 
   .indicator {
@@ -283,6 +423,9 @@
     font-weight: 500;
     color: #ccc;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .expanded-panel {
@@ -315,6 +458,13 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  .panel-header > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
   .badge {
     background: rgba(74, 222, 128, 0.15);
     color: #4ade80;
@@ -322,6 +472,8 @@
     border-radius: 8px;
     font-size: 11px;
     font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .empty-state {
@@ -357,6 +509,8 @@
     border-radius: 6px;
     cursor: pointer;
     transition: background 0.2s;
+    min-width: 0;
+    gap: 8px;
   }
 
   .agent-item:hover {
@@ -368,6 +522,7 @@
     flex-direction: column;
     gap: 2px;
     overflow: hidden;
+    min-width: 0;
   }
 
   .agent-pid {
@@ -389,6 +544,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
   }
 
   .status-dot {
@@ -424,6 +580,19 @@
     font-size: 11px;
     color: #aaa;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .launcher-badge {
+    font-size: 10px;
+    color: #888;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .panel-footer {

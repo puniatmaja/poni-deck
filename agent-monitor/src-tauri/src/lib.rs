@@ -59,17 +59,52 @@ fn open_path(path: String, action: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn resize_window(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+fn open_for_launcher(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    launcher: String,
+) -> Result<(), String> {
+    let fallback = state
+        .config
+        .lock()
+        .map(|c| c.click_action.clone())
+        .unwrap_or_default();
+    click_handler::open_for_launcher(&path, &launcher, &fallback).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn resize_window(
+    app: tauri::AppHandle,
+    width: f64,
+    height: f64,
+    preserve_center_x: Option<bool>,
+) -> Result<(), String> {
     let window = app.get_webview_window("overlay").ok_or("window not found")?;
-    let monitor = window.current_monitor().ok().flatten().ok_or("no monitor")?;
-    let screen = monitor.size();
-    window
-        .set_size(tauri::PhysicalSize::new(width as u32, height as u32))
-        .map_err(|e| e.to_string())?;
-    let x = (screen.width as f64 - width).max(0.0) / 2.0;
-    window
-        .set_position(tauri::PhysicalPosition::new(x as i32, 0))
-        .map_err(|e| e.to_string())?;
+    let size = tauri::PhysicalSize::new(width as u32, height as u32);
+
+    if preserve_center_x == Some(true) {
+        let pos = window.outer_position().map_err(|e| e.to_string())?;
+        let old_size = window.outer_size().unwrap_or(size);
+        let dx = ((old_size.width as i64 - width as i64) / 2) as i32;
+        let mut new_x = pos.x + dx;
+
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let area = monitor.position();
+            let mw = monitor.size().width as i32;
+            new_x = if size.width as i32 <= mw {
+                new_x.clamp(area.x, area.x + mw - size.width as i32)
+            } else {
+                area.x
+            };
+        }
+
+        window.set_size(size).map_err(|e| e.to_string())?;
+        window
+            .set_position(tauri::PhysicalPosition::new(new_x, pos.y))
+            .map_err(|e| e.to_string())?;
+    } else {
+        window.set_size(size).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -152,6 +187,7 @@ pub fn run() {
             open_terminal,
             open_vscode,
             open_path,
+            open_for_launcher,
             resize_window,
         ])
         .run(tauri::generate_context!())
