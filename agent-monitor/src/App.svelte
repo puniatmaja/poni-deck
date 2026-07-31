@@ -216,7 +216,7 @@
   }
 
   .dynamic-island.closed {
-    clip-path: inset(0 110px 220px 110px round 8px);
+    clip-path: inset(0 0 220px 0 round 8px);
   }
 
   .dynamic-island.open {
