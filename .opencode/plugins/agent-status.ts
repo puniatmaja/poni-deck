@@ -8,6 +8,12 @@ const RETRY_MS = 500
 
 type Status = "working" | "idle" | "waiting_confirmation" | "error"
 
+function detectLauncher(): string {
+  if (process.env.TERM_PROGRAM === "vscode") return "vscode"
+  if (Object.keys(process.env).some((k) => k.startsWith("VSCODE_"))) return "vscode"
+  return "terminal"
+}
+
 let dir: string | null = null
 let pid = process.pid
 let cwd = ""
@@ -15,6 +21,7 @@ let current: Status = "idle"
 let lastWritten: Status | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let launcher = "terminal"
 let client: any = null
 
 function writeStatus(status: Status) {
@@ -33,6 +40,7 @@ function flush() {
     status: current,
     pid,
     cwd,
+    launcher,
     timestamp: new Date().toISOString(),
   })
 
@@ -109,6 +117,7 @@ export const agentStatus: Plugin = async (ctx) => {
     : join(process.env.USERPROFILE ?? ".", ".config", "agent-monitor", "agents")
   cwd = ctx.directory ?? process.cwd()
   pid = process.pid
+  launcher = detectLauncher()
   client = (ctx as any).client ?? null
 
   mkdirSync(dir, { recursive: true })

@@ -5,6 +5,7 @@ mod process_scanner;
 mod state;
 mod status_reader;
 mod tray;
+mod window_focus;
 
 use state::{AgentInfo, AppState, Config};
 use std::collections::{HashMap, HashSet};
@@ -63,13 +64,14 @@ fn open_for_launcher(
     state: tauri::State<'_, AppState>,
     path: String,
     launcher: String,
+    pid: u32,
 ) -> Result<(), String> {
     let fallback = state
         .config
         .lock()
         .map(|c| c.click_action.clone())
         .unwrap_or_default();
-    click_handler::open_for_launcher(&path, &launcher, &fallback).map_err(|e| e.to_string())
+    click_handler::open_focus_or_new(&path, &launcher, &fallback, pid).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

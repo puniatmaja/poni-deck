@@ -1,8 +1,34 @@
 use crate::state::AgentInfo;
+use std::collections::HashMap;
 use windows::core::PWSTR;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Diagnostics::ToolHelp::*;
 use windows::Win32::System::Threading::*;
+
+const MAX_HOPS: usize = 5;
+
+fn detect_launcher_from_parent_chain(
+    pid: u32,
+    parent_map: &HashMap<u32, (u32, String)>,
+) -> String {
+    let mut cur = pid;
+    for _ in 0..MAX_HOPS {
+        let Some(&(parent, ref name)) = parent_map.get(&cur) else {
+            break;
+        };
+        if name.to_lowercase() == "code.exe" {
+            return "vscode".to_string();
+        }
+        if parent == cur {
+            break;
+        }
+        if !parent_map.contains_key(&parent) {
+            break;
+        }
+        cur = parent;
+    }
+    "terminal".to_string()
+}
 
 fn get_process_path(pid: u32) -> Option<String> {
     unsafe {
@@ -123,6 +149,7 @@ fn parse_working_directory(cmdline: &str) -> Option<String> {
 
 pub fn scan_agents() -> Vec<AgentInfo> {
     let mut agents = Vec::new();
+    let mut parent_map: HashMap<u32, (u32, String)> = HashMap::new();
 
     unsafe {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
@@ -137,6 +164,8 @@ pub fn scan_agents() -> Vec<AgentInfo> {
                 let name = String::from_utf16_lossy(
                     &entry.szExeFile[..entry.szExeFile.iter().take_while(|&&c| c != 0).count()]
                 );
+
+                parent_map.insert(entry.th32ProcessID, (entry.th32ParentProcessID, name.clone()));
 
                 if name.to_lowercase() == "opencode.exe" {
                     let pid = entry.th32ProcessID;
@@ -157,6 +186,7 @@ pub fn scan_agents() -> Vec<AgentInfo> {
                         exe_path: exe_path.clone(),
                         working_dir,
                         state: "running".to_string(),
+                        launcher: "terminal".to_string(),
                     });
                 }
 
@@ -170,9 +200,11 @@ pub fn scan_agents() -> Vec<AgentInfo> {
     }
 
     for agent in &mut agents {
-        if let Some(status) = crate::status_reader::read(agent.pid) {
-            agent.state = status;
-        }
+        let (state, launcher) = crate::status_reader::read_state_and_launcher(agent.pid)
+            .unwrap_or(("running".to_string(), None));
+        agent.state = state;
+        agent.launcher = launcher
+            .unwrap_or_else(|| detect_launcher_from_parent_chain(agent.pid, &parent_map));
     }
     prefer_status_file_source(&mut agents);
 
@@ -180,8 +212,6 @@ pub fn scan_agents() -> Vec<AgentInfo> {
 }
 
 fn prefer_status_file_source(agents: &mut Vec<AgentInfo>) {
-    use std::collections::HashMap;
-
     let mut chosen: HashMap<String, u32> = HashMap::new();
     let mut mtime: HashMap<u32, Option<std::time::SystemTime>> = HashMap::new();
 

@@ -9,7 +9,9 @@
   const DEFAULT_WIDTH = 340;
   const MIN_WIDTH = 160;
   const MAX_WIDTH = 640;
-  const EXPANDED_HEIGHT = 260;
+  const DEFAULT_HEIGHT = 260;   // PHYSICAL px — tinggi expanded default (eksis: EXPANDED_HEIGHT)
+  const MIN_HEIGHT = 180;       // CSS px — floor usable, dikonversi × devicePixelRatio saat masuk jalur physical
+  const MAX_HEIGHT = 520;       // PHYSICAL px — konsisten dengan resize_window (PhysicalSize)
 
   const STATUS_PRIORITY = ['error', 'waiting_confirmation', 'working', 'running', 'idle'];
   const STATUS_LABELS = {
@@ -51,8 +53,9 @@
     return path;
   }
 
-  let currentHeight = EXPANDED_HEIGHT;
+  let currentHeight = DEFAULT_HEIGHT;
   let currentWidth = DEFAULT_WIDTH;
+  let expandedHeight = DEFAULT_HEIGHT;   // target tinggi saat expanded (PHYSICAL px) — session state
 
   function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
@@ -127,7 +130,7 @@
     const gen = ++generation;
     clearTimeout(phaseTimer);
     isLocked = true;
-    await animateResize(currentHeight, EXPANDED_HEIGHT, 320, gen);
+    await animateResize(currentHeight, expandedHeight, 320, gen);
     if (gen !== generation) return;
     showPanel = true;
   }
@@ -142,7 +145,7 @@
       if (gen !== generation) return;
       const h = collapsedHeight();
       isLocked = false;
-      animateResize(currentHeight, h, 320, gen);
+      animateResize(currentHeight, Math.ceil(h * window.devicePixelRatio), 320, gen);
     }, 250);
   }
 
@@ -158,7 +161,8 @@
   function startResize(e) {
     e.preventDefault();
     e.stopPropagation();
-    if (isLocked) return;
+    if (!isLocked) return;
+    if (isResizing) return;
     isResizing = true;
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
@@ -206,9 +210,69 @@
     resizeStart = null;
   }
 
+  let resizeStartHeight = null;
+
+  function startResizeHeight(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isLocked || !showPanel) return;
+    if (isResizing) return;
+    isResizing = true;
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    resizeStartHeight = {
+      pointerId: e.pointerId,
+      startClientY: e.clientY,
+      startHeight: expandedHeight,
+      minH: Math.max(
+        Math.ceil(MIN_HEIGHT * window.devicePixelRatio),
+        Math.ceil((collapsedHeight() + 40) * window.devicePixelRatio),
+      ),
+      pendingHeight: null,
+      rafId: null,
+    };
+  }
+
+  function onResizeHeightMove(e) {
+    if (!isResizing || !resizeStartHeight || e.pointerId !== resizeStartHeight.pointerId) return;
+    const dy = (e.clientY - resizeStartHeight.startClientY) * window.devicePixelRatio;
+    resizeStartHeight.pendingHeight = Math.round(clamp(
+      resizeStartHeight.startHeight + dy,
+      resizeStartHeight.minH,
+      MAX_HEIGHT
+    ));
+    if (resizeStartHeight.rafId == null) {
+      resizeStartHeight.rafId = requestAnimationFrame(applyPendingHeight);
+    }
+  }
+
+  function applyPendingHeight() {
+    if (!isResizing || !resizeStartHeight) return;
+    resizeStartHeight.rafId = null;
+    const newHeight = resizeStartHeight.pendingHeight;
+    if (newHeight == null) return;
+    if (newHeight === expandedHeight) return;
+    expandedHeight = newHeight;
+    resizeWindow(newHeight);
+  }
+
+  function endResizeHeight(e) {
+    if (!isResizing) return;
+    if (resizeStartHeight && resizeStartHeight.rafId != null) {
+      cancelAnimationFrame(resizeStartHeight.rafId);
+      resizeStartHeight.rafId = null;
+      applyPendingHeight();
+    }
+    if (resizeStartHeight && e.currentTarget?.hasPointerCapture?.(resizeStartHeight.pointerId)) {
+      e.currentTarget.releasePointerCapture(resizeStartHeight.pointerId);
+    }
+    isResizing = false;
+    resizeStartHeight = null;
+  }
+
   async function openFolder(agent) {
     try {
-      await invoke('open_for_launcher', { path: agent.working_dir, launcher: agent.launcher ?? '' });
+      await invoke('open_for_launcher', { path: agent.working_dir, launcher: agent.launcher ?? '', pid: agent.pid });
     } catch (e) {
       console.error('Failed to open path:', e);
     }
@@ -230,7 +294,7 @@
     });
 
     // Start collapsed: shrink the window so transparent area doesn't block clicks.
-    await resizeWindow(collapsedHeight());
+    await resizeWindow(Math.ceil(collapsedHeight() * window.devicePixelRatio));
   });
 
   onDestroy(() => {
@@ -245,26 +309,6 @@
   bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
-    <span class="resize-handle resize-handle--left"
-          data-no-drag
-          data-dir="left"
-          on:pointerdown={startResize}
-          on:pointermove={onResizeMove}
-          on:pointerup={endResize}
-          on:pointercancel={endResize}
-          on:lostpointercapture={endResize}
-          on:click|stopPropagation
-          on:contextmenu|preventDefault></span>
-    <span class="resize-handle resize-handle--right"
-          data-no-drag
-          data-dir="right"
-          on:pointerdown={startResize}
-          on:pointermove={onResizeMove}
-          on:pointerup={endResize}
-          on:pointercancel={endResize}
-          on:lostpointercapture={endResize}
-          on:click|stopPropagation
-          on:contextmenu|preventDefault></span>
     <span class="indicator {aggStatus}" class:active={count > 0}></span>
     <span class="status-text">{displayText}</span>
   </div>
@@ -300,12 +344,37 @@
         </div>
       {/if}
 
-      <div class="panel-footer">
-        <button class="footer-btn" on:click|stopPropagation={() => invoke('open_terminal', { path: '' })?.catch(() => {})}>
-          Open Terminal
-        </button>
-      </div>
+      <span class="resize-handle--bottom"
+            data-no-drag
+            on:pointerdown={startResizeHeight}
+            on:pointermove={onResizeHeightMove}
+            on:pointerup={endResizeHeight}
+            on:pointercancel={endResizeHeight}
+            on:lostpointercapture={endResizeHeight}
+            on:click|stopPropagation
+            on:contextmenu|preventDefault></span>
   </div>
+
+  <span class="resize-handle resize-handle--left"
+        data-no-drag
+        data-dir="left"
+        on:pointerdown={startResize}
+        on:pointermove={onResizeMove}
+        on:pointerup={endResize}
+        on:pointercancel={endResize}
+        on:lostpointercapture={endResize}
+        on:click|stopPropagation
+        on:contextmenu|preventDefault></span>
+  <span class="resize-handle resize-handle--right"
+        data-no-drag
+        data-dir="right"
+        on:pointerdown={startResize}
+        on:pointermove={onResizeMove}
+        on:pointerup={endResize}
+        on:pointercancel={endResize}
+        on:lostpointercapture={endResize}
+        on:click|stopPropagation
+        on:contextmenu|preventDefault></span>
 </div>
 
 <style>
@@ -318,6 +387,7 @@
   .dynamic-island {
     display: flex;
     flex-direction: column;
+    position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -360,7 +430,7 @@
     transition: opacity 0.15s ease;
   }
 
-  .compact-bar:hover .resize-handle {
+  .dynamic-island:hover .resize-handle {
     opacity: 0.5;
   }
 
@@ -377,7 +447,7 @@
     right: 0;
   }
 
-  .compact-bar.expanded .resize-handle {
+  .dynamic-island:not(.expanded) .resize-handle {
     display: none;
   }
 
@@ -429,6 +499,7 @@
   }
 
   .expanded-panel {
+    position: relative;
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -439,6 +510,32 @@
     transform: translateY(-8px);
     transition: opacity 0.25s ease, transform 0.25s ease;
     pointer-events: none;
+  }
+
+  .expanded-panel:not(.visible) .resize-handle--bottom {
+    display: none;
+  }
+
+  .resize-handle--bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    cursor: ns-resize;
+    touch-action: none;
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .expanded-panel:hover .resize-handle--bottom {
+    opacity: 0.5;
+  }
+
+  .resize-handle--bottom:hover,
+  .resize-handle--bottom:active {
+    opacity: 1;
   }
 
   .expanded-panel.visible {
@@ -496,7 +593,8 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-height: 140px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -593,28 +691,5 @@
     border-radius: 6px;
     white-space: nowrap;
     flex-shrink: 0;
-  }
-
-  .panel-footer {
-    display: flex;
-    justify-content: center;
-    padding-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .footer-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #bbb;
-    padding: 6px 16px;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .footer-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
   }
 </style>

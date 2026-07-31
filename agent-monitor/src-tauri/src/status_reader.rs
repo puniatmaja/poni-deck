@@ -4,11 +4,14 @@ use std::time::{Duration, SystemTime};
 
 const STATUS_TTL: Duration = Duration::from_secs(30);
 const VALID_STATUSES: [&str; 4] = ["working", "idle", "waiting_confirmation", "error"];
+const VALID_LAUNCHERS: [&str; 2] = ["vscode", "terminal"];
 
 #[derive(Deserialize)]
 struct StatusFile {
     #[serde(default)]
     status: String,
+    #[serde(default)]
+    launcher: Option<String>,
 }
 
 fn status_path(pid: u32) -> PathBuf {
@@ -28,18 +31,34 @@ fn is_fresh(path: &Path) -> bool {
     }
 }
 
-pub fn read(pid: u32) -> Option<String> {
+fn read_fresh(pid: u32) -> Option<StatusFile> {
     let path = status_path(pid);
     if !is_fresh(&path) {
         return None;
     }
     let content = std::fs::read_to_string(&path).ok()?;
-    let file: StatusFile = serde_json::from_str(&content).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+#[allow(dead_code)]
+pub fn read(pid: u32) -> Option<String> {
+    let file = read_fresh(pid)?;
     if VALID_STATUSES.contains(&file.status.as_str()) {
         Some(file.status)
     } else {
         None
     }
+}
+
+pub fn read_state_and_launcher(pid: u32) -> Option<(String, Option<String>)> {
+    let file = read_fresh(pid)?;
+    if !VALID_STATUSES.contains(&file.status.as_str()) {
+        return None;
+    }
+    let launcher = file
+        .launcher
+        .filter(|l| VALID_LAUNCHERS.contains(&l.as_str()));
+    Some((file.status, launcher))
 }
 
 pub fn file_mtime(pid: u32) -> Option<SystemTime> {
