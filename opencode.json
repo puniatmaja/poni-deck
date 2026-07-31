@@ -27,7 +27,8 @@
           "git diff*": "allow",
           "git log*": "allow"
         },
-        "todowrite": "allow"
+        "todowrite": "allow",
+        "webfetch": "allow"
       }
     },
     "implementator": {
