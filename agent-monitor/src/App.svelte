@@ -6,14 +6,21 @@
 
   const appWindow = getCurrentWebviewWindow();
 
+  const WIDTH = 340;
+  const EXPANDED_HEIGHT = 260;
+
   let agents = [];
   let isLocked = false;
   let showPanel = false;
+  let islandEl;
+  let phaseTimer;
+  let generation = 0;
   let unlistenUpdate;
   let unlistenEvent;
 
   $: count = agents.length;
   $: displayText = count > 0 ? `${count} agent${count > 1 ? 's' : ''}` : 'idle';
+  $: isExpanded = isLocked;
 
   function formatPath(path) {
     if (!path) return 'unknown';
@@ -23,22 +30,67 @@
     return path;
   }
 
+  async function resizeWindow(height) {
+    try {
+      await invoke('resize_window', { width: WIDTH, height });
+    } catch (e) {
+      console.error('Failed to resize window:', e);
+    }
+  }
+
+  function collapsedHeight() {
+    const bar = islandEl?.querySelector('.compact-bar');
+    return Math.ceil(bar?.getBoundingClientRect().height ?? 42);
+  }
+
+  function setClip(open, animate = true) {
+    if (!islandEl) return;
+    if (!animate) islandEl.style.transition = 'none';
+    islandEl.classList.toggle('open', open);
+    islandEl.classList.toggle('closed', !open);
+    if (!animate) {
+      void islandEl.offsetHeight;
+      islandEl.style.transition = '';
+    }
+  }
+
   function startDrag(e) {
     if (e.target.closest('[data-no-drag]')) return;
     appWindow.startDragging();
   }
 
-  function toggleLock() {
-    if (!isLocked) {
-      isLocked = true;
-      showPanel = true;
-    } else {
-      showPanel = false;
-      setTimeout(() => { isLocked = false; }, 250);
-    }
+  async function expand() {
+    const gen = ++generation;
+    clearTimeout(phaseTimer);
+    isLocked = true;
+    // Snap closed before growing so the larger window never flashes the panel.
+    setClip(false, false);
+    await resizeWindow(EXPANDED_HEIGHT);
+    if (gen !== generation) return;
+    showPanel = true;
+    setClip(true);
   }
 
-  $: isExpanded = isLocked;
+  function collapse() {
+    if (!isLocked) return;
+    generation++;
+    clearTimeout(phaseTimer);
+    showPanel = false;
+    // Keep the bar opaque while the panel fades out, then collapse the clip.
+    phaseTimer = setTimeout(() => {
+      isLocked = false;
+      setClip(false);
+      phaseTimer = setTimeout(() => {
+        const h = collapsedHeight();
+        resizeWindow(h).then(() => setClip(true, false));
+      }, 420);
+    }, 250);
+  }
+
+  function toggleLock() {
+    if (isLocked) collapse();
+    else expand();
+  }
 
   async function openFolder(path) {
     try {
@@ -63,6 +115,11 @@
     unlistenEvent = await listen('agent-event', (event) => {
       console.log('Agent event:', event.payload);
     });
+
+    // Start collapsed: shrink the window so transparent area doesn't block clicks.
+    setClip(false, false);
+    await resizeWindow(collapsedHeight());
+    setClip(true, false);
   });
 
   onDestroy(() => {
@@ -72,9 +129,9 @@
 </script>
 
 <div
-  class="dynamic-island"
+  class="dynamic-island closed"
   class:expanded={isExpanded}
-  class:locked={isLocked}
+  bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
     <span class="indicator" class:active={count > 0}></span>
@@ -138,8 +195,12 @@
     transition: clip-path 0.35s ease;
   }
 
-  .dynamic-island:not(.expanded) {
+  .dynamic-island.closed {
     clip-path: inset(0 110px 220px 110px round 8px);
+  }
+
+  .dynamic-island.open {
+    clip-path: none;
   }
 
   .compact-bar {
