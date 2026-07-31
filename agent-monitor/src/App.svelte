@@ -9,6 +9,15 @@
   const WIDTH = 340;
   const EXPANDED_HEIGHT = 260;
 
+  const STATUS_PRIORITY = ['error', 'waiting_confirmation', 'working', 'running', 'idle'];
+  const STATUS_LABELS = {
+    working: 'working',
+    idle: 'idle',
+    waiting_confirmation: 'waiting confirmation',
+    error: 'error',
+    running: 'running',
+  };
+
   let agents = [];
   let isLocked = false;
   let showPanel = false;
@@ -19,8 +28,18 @@
   let unlistenEvent;
 
   $: count = agents.length;
-  $: displayText = count > 0 ? `${count} agent${count > 1 ? 's' : ''}` : 'idle';
+  $: aggStatus = aggregateStatus(agents);
+  $: displayText = count === 0 || aggStatus === 'idle'
+    ? 'idle'
+    : `${count} agent${count > 1 ? 's' : ''} · ${STATUS_LABELS[aggStatus] || aggStatus}`;
   $: isExpanded = isLocked;
+
+  function aggregateStatus(list) {
+    for (const status of STATUS_PRIORITY) {
+      if (list.some((a) => a.state === status)) return status;
+    }
+    return 'idle';
+  }
 
   function formatPath(path) {
     if (!path) return 'unknown';
@@ -134,7 +153,7 @@
   bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
-    <span class="indicator" class:active={count > 0}></span>
+    <span class="indicator {aggStatus}" class:active={count > 0}></span>
     <span class="status-text">{displayText}</span>
   </div>
 
@@ -158,7 +177,8 @@
                 <span class="agent-path">{formatPath(agent.working_dir)}</span>
               </div>
               <div class="agent-status">
-                <span class="status-dot running"></span>
+                <span class="status-dot {agent.state}"></span>
+                <span class="status-label">{STATUS_LABELS[agent.state] || agent.state}</span>
               </div>
             </div>
           {/each}
@@ -226,12 +246,36 @@
     height: 8px;
     border-radius: 50%;
     background: #555;
-    transition: background 0.3s ease;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
   }
 
-  .indicator.active {
+  .indicator.active.working,
+  .indicator.active.running {
     background: #4ade80;
     box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  }
+
+  .indicator.active.working {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .indicator.active.idle {
+    background: #6b7280;
+  }
+
+  .indicator.active.waiting_confirmation {
+    background: #fbbf24;
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  }
+
+  .indicator.active.error {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
   }
 
   .status-text {
@@ -344,16 +388,42 @@
   .agent-status {
     display: flex;
     align-items: center;
+    gap: 6px;
   }
 
   .status-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
+    background: #555;
+    transition: background 0.3s ease;
   }
 
+  .status-dot.working,
   .status-dot.running {
     background: #4ade80;
+  }
+
+  .status-dot.working {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .status-dot.idle {
+    background: #6b7280;
+  }
+
+  .status-dot.waiting_confirmation {
+    background: #fbbf24;
+  }
+
+  .status-dot.error {
+    background: #ef4444;
+  }
+
+  .status-label {
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
   }
 
   .panel-footer {

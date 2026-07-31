@@ -169,5 +169,49 @@ pub fn scan_agents() -> Vec<AgentInfo> {
         let _ = CloseHandle(snapshot);
     }
 
+    for agent in &mut agents {
+        if let Some(status) = crate::status_reader::read(agent.pid) {
+            agent.state = status;
+        }
+    }
+    prefer_status_file_source(&mut agents);
+
     agents
+}
+
+fn prefer_status_file_source(agents: &mut Vec<AgentInfo>) {
+    use std::collections::HashMap;
+
+    let mut chosen: HashMap<String, u32> = HashMap::new();
+    let mut mtime: HashMap<u32, Option<std::time::SystemTime>> = HashMap::new();
+
+    for agent in agents.iter() {
+        if agent.working_dir.is_empty() {
+            continue;
+        }
+        let mt = crate::status_reader::file_mtime(agent.pid);
+        mtime.insert(agent.pid, mt);
+        match chosen.get(&agent.working_dir).copied() {
+            None => {
+                chosen.insert(agent.working_dir.clone(), agent.pid);
+            }
+            Some(current) => {
+                let current_has = mtime.get(&current).copied().flatten().is_some();
+                let new_has = mt.is_some();
+                if new_has && (!current_has || mt > mtime.get(&current).copied().flatten()) {
+                    chosen.insert(agent.working_dir.clone(), agent.pid);
+                }
+            }
+        }
+    }
+
+    for agent in agents.iter_mut() {
+        if !agent.working_dir.is_empty() {
+            if let Some(&primary) = chosen.get(&agent.working_dir) {
+                if primary != agent.pid {
+                    agent.state = "running".to_string();
+                }
+            }
+        }
+    }
 }

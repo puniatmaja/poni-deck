@@ -3,10 +3,11 @@ mod config;
 mod notifier;
 mod process_scanner;
 mod state;
+mod status_reader;
 mod tray;
 
 use state::{AgentInfo, AppState, Config};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tauri::{Emitter, Manager};
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Threading::*;
@@ -126,9 +127,20 @@ pub fn run() {
             tray::create_tray(app)
                 .map_err(|e| format!("Failed to create system tray: {}", e))?;
 
+            clear_agents_dir();
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 polling_loop(handle).await;
+            });
+
+            tauri::async_runtime::spawn(async move {
+                let mut interval =
+                    tokio::time::interval(std::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    cleanup_orphan_files();
+                }
             });
 
             Ok(())
@@ -191,6 +203,7 @@ async fn polling_loop(app: tauri::AppHandle) {
                         );
                     }
                 }
+                status_reader::remove_file(*pid);
             }
         }
 
@@ -203,8 +216,44 @@ async fn polling_loop(app: tauri::AppHandle) {
             }
         }
 
+        let counts = count_statuses(&agents);
+
         let _ = app.emit("agent-update", &agents);
-        tray::update_tray_tooltip(&app, agents.len());
+        tray::update_tray_tooltip(&app, agents.len(), &counts);
+    }
+}
+
+fn count_statuses(agents: &[AgentInfo]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for agent in agents {
+        *counts.entry(agent.state.clone()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn clear_agents_dir() {
+    if let Ok(entries) = std::fs::read_dir(config::agents_dir()) {
+        for entry in entries.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn cleanup_orphan_files() {
+    let pids: HashSet<u32> = process_scanner::scan_agents().iter().map(|a| a.pid).collect();
+    if let Ok(entries) = std::fs::read_dir(config::agents_dir()) {
+        for entry in entries.flatten() {
+            let name = match entry.file_name().to_str() {
+                Some(name) => name.to_string(),
+                None => continue,
+            };
+            let Some(pid) = name.strip_suffix(".json").and_then(|s| s.parse::<u32>().ok()) else {
+                continue;
+            };
+            if !pids.contains(&pid) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
     }
 }
 

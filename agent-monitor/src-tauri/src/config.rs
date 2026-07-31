@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use windows::core::PCWSTR;
 use windows::Win32::System::Registry::*;
 
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     let base = std::env::var("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -13,6 +13,10 @@ fn config_dir() -> PathBuf {
             PathBuf::from(home).join(".config")
         });
     base.join("agent-monitor")
+}
+
+pub(crate) fn agents_dir() -> PathBuf {
+    config_dir().join("agents")
 }
 
 fn config_path() -> PathBuf {
