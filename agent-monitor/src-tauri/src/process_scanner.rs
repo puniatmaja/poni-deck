@@ -205,6 +205,9 @@ pub fn scan_agents() -> Vec<AgentInfo> {
         agent.state = state;
         agent.launcher = launcher
             .unwrap_or_else(|| detect_launcher_from_parent_chain(agent.pid, &parent_map));
+        if let Some(cwd) = crate::status_reader::read_cwd(agent.pid) {
+            agent.working_dir = cwd;
+        }
     }
     prefer_status_file_source(&mut agents);
 
@@ -212,36 +215,34 @@ pub fn scan_agents() -> Vec<AgentInfo> {
 }
 
 fn prefer_status_file_source(agents: &mut Vec<AgentInfo>) {
-    let mut chosen: HashMap<String, u32> = HashMap::new();
-    let mut mtime: HashMap<u32, Option<std::time::SystemTime>> = HashMap::new();
-
+    let mut has_status: HashMap<u32, bool> = HashMap::new();
     for agent in agents.iter() {
-        if agent.working_dir.is_empty() {
-            continue;
-        }
-        let mt = crate::status_reader::file_mtime(agent.pid);
-        mtime.insert(agent.pid, mt);
-        match chosen.get(&agent.working_dir).copied() {
-            None => {
-                chosen.insert(agent.working_dir.clone(), agent.pid);
-            }
-            Some(current) => {
-                let current_has = mtime.get(&current).copied().flatten().is_some();
-                let new_has = mt.is_some();
-                if new_has && (!current_has || mt > mtime.get(&current).copied().flatten()) {
-                    chosen.insert(agent.working_dir.clone(), agent.pid);
-                }
-            }
-        }
+        has_status.insert(
+            agent.pid,
+            crate::status_reader::file_mtime(agent.pid).is_some(),
+        );
     }
 
+    let demote: Vec<u32> = agents
+        .iter()
+        .filter(|agent| {
+            !agent.working_dir.is_empty()
+                && !has_status.get(&agent.pid).copied().unwrap_or(false)
+        })
+        .filter(|agent| {
+            agents.iter().any(|o| {
+                o.pid != agent.pid
+                    && !o.working_dir.is_empty()
+                    && o.working_dir == agent.working_dir
+                    && has_status.get(&o.pid).copied().unwrap_or(false)
+            })
+        })
+        .map(|agent| agent.pid)
+        .collect();
+
     for agent in agents.iter_mut() {
-        if !agent.working_dir.is_empty() {
-            if let Some(&primary) = chosen.get(&agent.working_dir) {
-                if primary != agent.pid {
-                    agent.state = "running".to_string();
-                }
-            }
+        if demote.contains(&agent.pid) {
+            agent.state = "running".to_string();
         }
     }
 }

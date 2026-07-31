@@ -12,6 +12,8 @@ struct StatusFile {
     status: String,
     #[serde(default)]
     launcher: Option<String>,
+    #[serde(default)]
+    cwd: Option<String>,
 }
 
 fn status_path(pid: u32) -> PathBuf {
@@ -65,6 +67,11 @@ pub fn file_mtime(pid: u32) -> Option<SystemTime> {
     std::fs::metadata(status_path(pid))
         .and_then(|m| m.modified())
         .ok()
+}
+
+pub fn read_cwd(pid: u32) -> Option<String> {
+    let file = read_fresh(pid)?;
+    file.cwd.filter(|c| !c.is_empty())
 }
 
 pub fn remove_file(pid: u32) {
