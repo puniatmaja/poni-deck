@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use tauri::{
     AppHandle,
+    Emitter,
     Manager,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -24,10 +25,18 @@ fn create_icon() -> Image<'static> {
     Image::new_owned(vec![0u8; 32 * 32 * 4], 32, 32)
 }
 
+fn show_overlay(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("overlay") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 pub fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "show", "Show Overlay", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &settings, &quit])?;
 
     let icon = create_icon();
 
@@ -37,11 +46,10 @@ pub fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("Agent Monitor — 0 agents · idle")
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
-                "show" => {
-                    if let Some(window) = app.get_webview_window("overlay") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                "show" => show_overlay(app),
+                "settings" => {
+                    show_overlay(app);
+                    let _ = app.emit("open-settings", ());
                 }
                 "quit" => {
                     app.exit(0);

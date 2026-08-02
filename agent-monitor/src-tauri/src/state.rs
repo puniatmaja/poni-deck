@@ -14,7 +14,8 @@ pub struct AgentInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub polling_interval_ms: u64,
-    pub click_action: String,
+    pub notifications_enabled: bool,
+    pub always_on_top: bool,
     pub auto_start: bool,
 }
 
@@ -22,7 +23,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             polling_interval_ms: 2000,
-            click_action: "terminal".to_string(),
+            notifications_enabled: true,
+            always_on_top: true,
             auto_start: false,
         }
     }

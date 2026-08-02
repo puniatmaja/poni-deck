@@ -87,21 +87,13 @@ pub fn open_vscode(path: &str) -> Result<()> {
     Err(anyhow::anyhow!("VS Code not found, opened terminal instead"))
 }
 
-pub fn open_path_with_action(path: &str, action: &str) -> Result<()> {
-    match action {
-        "code" => open_vscode(path),
-        _ => open_terminal(path),
-    }
-}
-
-pub fn open_focus_or_new(path: &str, launcher: &str, fallback_action: &str, pid: u32) -> Result<()> {
+pub fn open_focus_or_new(path: &str, launcher: &str, pid: u32) -> Result<()> {
     if crate::window_focus::focus_agent_window(pid) {
         return Ok(());
     }
 
     match launcher {
         "vscode" => open_vscode(path),
-        "terminal" => open_terminal(path),
-        _ => open_path_with_action(path, fallback_action),
+        _ => open_terminal(path),
     }
 }

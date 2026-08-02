@@ -22,20 +22,46 @@
     running: 'running',
   };
 
+  const FLASH_MS = 650;           // durasi animasi flash dot saat status berubah
+  const HIGHLIGHT_WINDOW = 5000;  // jendela "baru berubah" (ms) untuk highlight saat expand
+  const HIGHLIGHT_MS = 1200;      // durasi highlight item di expanded panel
+  const MAX_STATUS_SEGMENTS = 3;  // maks segmen count per status di compact bar
+  const NOTIFY_MS = 4000;         // durasi auto-expand notifikasi saat status berubah
+
   let agents = [];
   let isLocked = false;
   let showPanel = false;
+  let showSettings = false;
+  let saved = false;
   let islandEl;
   let phaseTimer;
+  let notifyTimer;
   let generation = 0;
   let unlistenUpdate;
   let unlistenEvent;
+  let unlistenSettings;
+  let indicatorTimer;
+
+  let settings = {
+    polling_interval_ms: 2000,
+    notifications_enabled: true,
+    always_on_top: true,
+    auto_start: false,
+  };
+
+  let prevStates = new Map();      // pid -> state pada update sebelumnya
+  let changedAt = new Map();       // pid -> timestamp status terakhir berubah
+  let flashPids = new Set();       // pid yang sedang memicu animasi flash dot
+  let highlightPids = [];          // pid yang sedang di-highlight di expanded panel
+  let indicatorFlash = false;      // flash untuk indicator utama (compact bar)
+  let prevAggStatus = null;        // aggregate status pada update sebelumnya
+  let firstApply = true;           // hindari flash saat pertama kali data dimuat
+  let notifyPending = false;       // auto-collapse notifikasi sedang berjalan
 
   $: count = agents.length;
   $: aggStatus = aggregateStatus(agents);
-  $: displayText = count === 0 || aggStatus === 'idle'
-    ? 'idle'
-    : `${count} agent${count > 1 ? 's' : ''} · ${STATUS_LABELS[aggStatus] || aggStatus}`;
+  $: statusCounts = countStatuses(agents);
+  $: displayText = statusSummary(statusCounts);
   $: isExpanded = isLocked;
 
   function aggregateStatus(list) {
@@ -43,6 +69,93 @@
       if (list.some((a) => a.state === status)) return status;
     }
     return 'idle';
+  }
+
+  function countStatuses(list) {
+    const counts = {};
+    for (const a of list) counts[a.state] = (counts[a.state] || 0) + 1;
+    return counts;
+  }
+
+  function statusSummary(counts) {
+    if (!counts || Object.keys(counts).length === 0) return 'idle';
+    const parts = [];
+    for (const s of STATUS_PRIORITY) {
+      if (counts[s]) parts.push(`${counts[s]} ${STATUS_LABELS[s] || s}`);
+    }
+    if (parts.length > MAX_STATUS_SEGMENTS) {
+      const rest = parts.length - MAX_STATUS_SEGMENTS + 1;
+      return parts.slice(0, MAX_STATUS_SEGMENTS - 1).join(' · ') + ` · +${rest} more`;
+    }
+    return parts.join(' · ');
+  }
+
+  function applyAgents(next) {
+    const now = Date.now();
+    const nextPrev = new Map();
+    const nextFlash = new Set();
+    for (const a of next) {
+      const prev = prevStates.get(a.pid);
+      nextPrev.set(a.pid, a.state);
+      if (prev !== undefined && prev !== a.state) {
+        changedAt.set(a.pid, now);
+        nextFlash.add(a.pid);
+      }
+    }
+    for (const pid of Array.from(prevStates.keys())) {
+      if (!nextPrev.has(pid)) changedAt.delete(pid);
+    }
+    prevStates = nextPrev;
+    flashPids = nextFlash;
+
+    const agg = aggregateStatus(next);
+    indicatorFlash = !firstApply && agg !== prevAggStatus;
+    prevAggStatus = agg;
+    firstApply = false;
+
+    if (indicatorFlash) {
+      clearTimeout(indicatorTimer);
+      indicatorTimer = setTimeout(() => {
+        indicatorFlash = false;
+      }, FLASH_MS);
+    }
+    if (nextFlash.size) {
+      const pids = Array.from(nextFlash);
+      if (showPanel) {
+        addHighlight(pids);
+      } else {
+        const notifyPids = pids.filter((pid) => nextPrev.get(pid) !== 'working');
+        if (notifyPids.length) notifyExpand();
+      }
+      setTimeout(() => {
+        const nextSet = new Set(flashPids);
+        for (const p of pids) nextSet.delete(p);
+        flashPids = nextSet;
+      }, FLASH_MS);
+    }
+    agents = next;
+  }
+
+  function notifyExpand() {
+    if (isLocked) return;
+    clearTimeout(notifyTimer);
+    notifyPending = true;
+    expand();
+    notifyTimer = setTimeout(() => {
+      if (!notifyPending) return;
+      notifyPending = false;
+      collapse();
+    }, NOTIFY_MS);
+  }
+
+  function addHighlight(pids) {
+    if (!pids.length) return;
+    highlightPids = Array.from(new Set([...highlightPids, ...pids]));
+    setTimeout(() => {
+      const next = new Set(highlightPids);
+      for (const p of pids) next.delete(p);
+      highlightPids = Array.from(next);
+    }, HIGHLIGHT_MS);
   }
 
   function formatPath(path) {
@@ -130,6 +243,11 @@
     const gen = ++generation;
     clearTimeout(phaseTimer);
     isLocked = true;
+    const now = Date.now();
+    const recent = agents
+      .filter((a) => changedAt.has(a.pid) && now - changedAt.get(a.pid) < HIGHLIGHT_WINDOW)
+      .map((a) => a.pid);
+    if (recent.length) addHighlight(recent);
     await animateResize(currentHeight, expandedHeight, 320, gen);
     if (gen !== generation) return;
     showPanel = true;
@@ -140,6 +258,7 @@
     const gen = ++generation;
     clearTimeout(phaseTimer);
     showPanel = false;
+    showSettings = false;
     // Let the panel fade out, then shrink the window down to the bar.
     phaseTimer = setTimeout(() => {
       if (gen !== generation) return;
@@ -149,8 +268,36 @@
     }, 250);
   }
 
+  function closeSettings() {
+    collapse();
+  }
+
+  async function openSettings() {
+    const gen = ++generation;
+    clearTimeout(phaseTimer);
+    clearTimeout(notifyTimer);
+    notifyPending = false;
+    isLocked = true;
+    showSettings = true;
+    await animateResize(currentHeight, expandedHeight, 320, gen);
+    if (gen !== generation) return;
+    showPanel = true;
+  }
+
+  async function saveSettings() {
+    try {
+      await invoke('set_config', { newConfig: settings });
+      saved = true;
+      setTimeout(() => (saved = false), 1500);
+    } catch (e) {
+      console.error('Failed to save settings:', e);
+    }
+  }
+
   function toggleLock() {
     if (isResizing) return;
+    clearTimeout(notifyTimer);
+    notifyPending = false;
     if (isLocked) collapse();
     else expand();
   }
@@ -280,17 +427,28 @@
 
   onMount(async () => {
     try {
-      agents = await invoke('get_agents');
+      applyAgents(await invoke('get_agents'));
     } catch (e) {
       console.error('Failed to get agents:', e);
     }
 
+    try {
+      settings = await invoke('get_config');
+    } catch (e) {
+      console.error('Failed to get config:', e);
+    }
+
     unlistenUpdate = await listen('agent-update', (event) => {
-      agents = event.payload || [];
+      applyAgents(event.payload || []);
     });
 
     unlistenEvent = await listen('agent-event', (event) => {
       console.log('Agent event:', event.payload);
+    });
+
+    unlistenSettings = await listen('open-settings', () => {
+      if (!isLocked) openSettings();
+      else showSettings = true;
     });
 
     // Start collapsed: shrink the window so transparent area doesn't block clicks.
@@ -300,6 +458,7 @@
   onDestroy(() => {
     if (unlistenUpdate) unlistenUpdate();
     if (unlistenEvent) unlistenEvent();
+    if (unlistenSettings) unlistenSettings();
   });
 </script>
 
@@ -309,7 +468,7 @@
   bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
-    <span class="indicator {aggStatus}" class:active={count > 0}></span>
+    <span class="indicator {aggStatus}" class:active={count > 0} class:flash={indicatorFlash}></span>
     <span class="status-text">{displayText}</span>
   </div>
 
@@ -319,7 +478,39 @@
       <span class="badge">{count} active</span>
     </div>
 
-    {#if agents.length === 0}
+    {#if showSettings}
+      <div class="settings-body">
+        <div class="settings-header">
+          <span>Settings</span>
+          <button class="close-btn" data-no-drag on:click|stopPropagation={closeSettings}>&times;</button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Notifications</span>
+          <button
+            class="toggle {settings.notifications_enabled ? 'on' : ''}"
+            on:click|stopPropagation={() => (settings.notifications_enabled = !settings.notifications_enabled)}
+          ><span class="knob"></span></button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Always on top</span>
+          <button
+            class="toggle {settings.always_on_top ? 'on' : ''}"
+            on:click|stopPropagation={() => (settings.always_on_top = !settings.always_on_top)}
+          ><span class="knob"></span></button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Start with Windows</span>
+          <button
+            class="toggle {settings.auto_start ? 'on' : ''}"
+            on:click|stopPropagation={() => (settings.auto_start = !settings.auto_start)}
+          ><span class="knob"></span></button>
+        </div>
+        <div class="settings-actions">
+          <button class="save-btn" on:click|stopPropagation={saveSettings}>Save</button>
+          <span class="saved-msg" class:visible={saved}>Saved</span>
+        </div>
+      </div>
+    {:else if agents.length === 0}
       <div class="empty-state">
         <span>No opencode agents detected</span>
         <span class="sub">Waiting for agent to start...</span>
@@ -327,13 +518,13 @@
     {:else}
       <div class="agent-list">
           {#each agents as agent (agent.pid)}
-            <div class="agent-item" on:click|stopPropagation={() => openFolder(agent)}>
+            <div class="agent-item" class:highlighted={highlightPids.includes(agent.pid)} on:click|stopPropagation={() => openFolder(agent)}>
               <div class="agent-info">
                 <span class="agent-pid">PID {agent.pid}</span>
                 <span class="agent-path">{formatPath(agent.working_dir)}</span>
               </div>
               <div class="agent-status">
-                <span class="status-dot {agent.state}"></span>
+                <span class="status-dot {agent.state}" class:flash={flashPids.has(agent.pid)}></span>
                 <span class="status-label">{STATUS_LABELS[agent.state] || agent.state}</span>
                 {#if agent.launcher}
                   <span class="launcher-badge">{agent.launcher === 'vscode' ? 'VSCode' : 'Terminal'}</span>
@@ -462,6 +653,7 @@
   .indicator.active.working,
   .indicator.active.running {
     background: #4ade80;
+    --dot-color: #4ade80;
     box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
   }
 
@@ -471,16 +663,30 @@
 
   .indicator.active.idle {
     background: #6b7280;
+    --dot-color: #6b7280;
   }
 
   .indicator.active.waiting_confirmation {
     background: #fbbf24;
+    --dot-color: #fbbf24;
     box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
   }
 
   .indicator.active.error {
     background: #ef4444;
+    --dot-color: #ef4444;
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  }
+
+  @keyframes statusFlash {
+    0% { box-shadow: 0 0 0 0 var(--dot-color, #fff); opacity: 1; }
+    60% { opacity: 0.35; }
+    100% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); opacity: 1; }
+  }
+
+  .indicator.flash,
+  .status-dot.flash {
+    animation: statusFlash 0.65s ease-out;
   }
 
   @keyframes pulse {
@@ -615,6 +821,15 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
+  @keyframes itemFlash {
+    0% { background: rgba(255, 255, 255, 0.22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+    100% { background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0); }
+  }
+
+  .agent-item.highlighted {
+    animation: itemFlash 1.2s ease-out;
+  }
+
   .agent-info {
     display: flex;
     flex-direction: column;
@@ -656,6 +871,7 @@
   .status-dot.working,
   .status-dot.running {
     background: #4ade80;
+    --dot-color: #4ade80;
   }
 
   .status-dot.working {
@@ -664,14 +880,17 @@
 
   .status-dot.idle {
     background: #6b7280;
+    --dot-color: #6b7280;
   }
 
   .status-dot.waiting_confirmation {
     background: #fbbf24;
+    --dot-color: #fbbf24;
   }
 
   .status-dot.error {
     background: #ef4444;
+    --dot-color: #ef4444;
   }
 
   .status-label {
@@ -691,5 +910,130 @@
     border-radius: 6px;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  .settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 8px 4px;
+    overflow-y: auto;
+  }
+
+  .settings-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    padding: 2px 4px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .close-btn {
+    position: absolute;
+    right: 0;
+    top: 0;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .close-btn:hover {
+    color: #fff;
+  }
+
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+  }
+
+  .setting-label {
+    font-size: 12px;
+    color: #ccc;
+  }
+
+  .toggle {
+    position: relative;
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    border: none;
+    background: #444;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .toggle .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #aaa;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+
+  .toggle.on {
+    background: #4ade80;
+  }
+
+  .toggle.on .knob {
+    transform: translateX(14px);
+    background: #fff;
+  }
+
+  .settings-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 2px 4px;
+  }
+
+  .save-btn {
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.4);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .save-btn:hover {
+    background: rgba(74, 222, 128, 0.3);
+  }
+
+  .saved-msg {
+    position: absolute;
+    right: 12px;
+    font-size: 11px;
+    color: #4ade80;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .saved-msg.visible {
+    opacity: 1;
   }
 </style>

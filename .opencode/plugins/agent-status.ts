@@ -104,7 +104,11 @@ function mapEventToStatus(type: string, props: any): Status | null {
       return props?.info?.role === "assistant" ? "working" : null
     case "permission.asked":
       return "waiting_confirmation"
+    case "permission.v2.asked":
+      return "waiting_confirmation"
     case "permission.replied":
+      return "working"
+    case "permission.v2.replied":
       return "working"
     default:
       return null
@@ -131,6 +135,18 @@ export const agentStatus: Plugin = async (ctx) => {
     "tool.execute.after": async () => writeStatus("working"),
 
     async event({ event }) {
+      if (event.type === "permission.asked" || event.type === "permission.v2.asked" || event.type === "permission.replied" || event.type === "permission.v2.replied") {
+        client?.app
+          ?.log({
+            body: {
+              service: "agent-status",
+              level: "debug",
+              message: `permission event ${event.type}`,
+              extra: { pid },
+            },
+          })
+          .catch(() => {})
+      }
       const status = mapEventToStatus(event.type, event.properties)
       if (status) writeStatus(status)
     },

@@ -27,6 +27,7 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<Config, String> {
 
 #[tauri::command]
 fn set_config(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     new_config: Config,
 ) -> Result<(), String> {
@@ -35,6 +36,12 @@ fn set_config(
         *cfg = new_config.clone();
     }
     config::save_config(&new_config).map_err(|e| e.to_string())?;
+
+    if let Some(window) = app.get_webview_window("overlay") {
+        window
+            .set_always_on_top(new_config.always_on_top)
+            .map_err(|e| e.to_string())?;
+    }
 
     let cfg = state.config.lock().map_err(|e| e.to_string())?;
     if cfg.auto_start != new_config.auto_start {
@@ -55,23 +62,12 @@ fn open_vscode(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_path(path: String, action: String) -> Result<(), String> {
-    click_handler::open_path_with_action(&path, &action).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn open_for_launcher(
-    state: tauri::State<'_, AppState>,
     path: String,
     launcher: String,
     pid: u32,
 ) -> Result<(), String> {
-    let fallback = state
-        .config
-        .lock()
-        .map(|c| c.click_action.clone())
-        .unwrap_or_default();
-    click_handler::open_focus_or_new(&path, &launcher, &fallback, pid).map_err(|e| e.to_string())
+    click_handler::open_focus_or_new(&path, &launcher, pid).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -159,6 +155,9 @@ pub fn run() {
                     let x = (screen.width as i32 - win_size.width as i32).max(0) / 2;
                     let _ = window.set_position(tauri::PhysicalPosition::new(x, 0));
                 }
+                if let Ok(cfg) = app.state::<AppState>().config.lock() {
+                    let _ = window.set_always_on_top(cfg.always_on_top);
+                }
             }
 
             tray::create_tray(app)
@@ -188,7 +187,6 @@ pub fn run() {
             set_config,
             open_terminal,
             open_vscode,
-            open_path,
             open_for_launcher,
             resize_window,
         ])
@@ -208,6 +206,11 @@ async fn polling_loop(app: tauri::AppHandle) {
         let current_pids: HashSet<u32> = agents.iter().map(|a| a.pid).collect();
 
         let state = app.state::<AppState>();
+        let notifications_enabled = state
+            .config
+            .lock()
+            .map(|c| c.notifications_enabled)
+            .unwrap_or(true);
 
         let mut prev_pids = match state.previous_pids.lock() {
             Ok(p) => p,
@@ -216,7 +219,9 @@ async fn polling_loop(app: tauri::AppHandle) {
 
         for agent in &agents {
             if !prev_pids.contains(&agent.pid) {
-                notifier::notify_started(&app, agent);
+                if notifications_enabled {
+                    notifier::notify_started(&app, agent);
+                }
                 let _ = app.emit(
                     "agent-event",
                     serde_json::json!({
@@ -231,7 +236,9 @@ async fn polling_loop(app: tauri::AppHandle) {
             if !current_pids.contains(pid) {
                 if let Ok(mut agents_map) = state.agents.lock() {
                     if let Some(info) = agents_map.remove(pid) {
-                        notifier::notify_stopped(&app, &info);
+                        if notifications_enabled {
+                            notifier::notify_stopped(&app, &info);
+                        }
                         let _ = app.emit(
                             "agent-event",
                             serde_json::json!({
