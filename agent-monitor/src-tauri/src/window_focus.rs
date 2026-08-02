@@ -5,6 +5,7 @@ use windows::Win32::System::Threading::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 const MAX_HOPS: usize = 5;
+const CONSOLE_HOSTS: [&str; 2] = ["conhost.exe", "openconsole.exe"];
 
 fn build_parent_map() -> HashMap<u32, (u32, String)> {
     let mut map = HashMap::new();
@@ -46,10 +47,6 @@ unsafe extern "system" fn find_window_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let mut win_pid = 0u32;
     let _ = GetWindowThreadProcessId(hwnd, Some(&mut win_pid));
     if win_pid != ctx.pid {
-        return BOOL(1);
-    }
-
-    if GetWindowTextLengthW(hwnd) == 0 {
         return BOOL(1);
     }
 
@@ -104,6 +101,21 @@ fn activate_window(hwnd: HWND) -> bool {
     }
 }
 
+fn find_console_child_window(cur: u32, map: &HashMap<u32, (u32, String)>) -> Option<HWND> {
+    for (&child_pid, &(parent, ref name)) in map {
+        if parent != cur {
+            continue;
+        }
+        if !CONSOLE_HOSTS.contains(&name.to_lowercase().as_str()) {
+            continue;
+        }
+        if let Some(hwnd) = find_visible_window(child_pid, map) {
+            return Some(hwnd);
+        }
+    }
+    None
+}
+
 pub fn focus_agent_window(pid: u32) -> bool {
     if pid == 0 {
         return false;
@@ -114,6 +126,12 @@ pub fn focus_agent_window(pid: u32) -> bool {
 
     for _ in 0..MAX_HOPS {
         if let Some(hwnd) = find_visible_window(cur, &map) {
+            return activate_window(hwnd);
+        }
+
+        // Jaring pengaman: pada beberapa versi Windows, jendela konsol dimiliki
+        // conhost.exe / OpenConsole.exe (child dari shell, bukan ancestor).
+        if let Some(hwnd) = find_console_child_window(cur, &map) {
             return activate_window(hwnd);
         }
 

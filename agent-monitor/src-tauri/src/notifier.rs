@@ -3,8 +3,9 @@ use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
 pub fn notify_started(app: &AppHandle, agent: &AgentInfo) {
+    let tool = if agent.tool == "claude" { "claude" } else { "opencode" };
     let body = format!(
-        "opencode agent started — {}",
+        "{tool} agent started — {}",
         agent.working_dir
     );
 
@@ -16,8 +17,9 @@ pub fn notify_started(app: &AppHandle, agent: &AgentInfo) {
 }
 
 pub fn notify_stopped(app: &AppHandle, agent: &AgentInfo) {
+    let tool = if agent.tool == "claude" { "claude" } else { "opencode" };
     let body = format!(
-        "opencode agent finished — {}",
+        "{tool} agent finished — {}",
         agent.working_dir
     );
 

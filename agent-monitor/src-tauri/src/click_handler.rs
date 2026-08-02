@@ -69,14 +69,14 @@ fn code_cli_on_path() -> bool {
 
 pub fn open_vscode(path: &str) -> Result<()> {
     if let Some(exe) = find_vscode() {
-        if Command::new(exe).arg(path).spawn().is_ok() {
+        if Command::new(exe).arg("-r").arg(path).spawn().is_ok() {
             return Ok(());
         }
     }
 
     if code_cli_on_path() {
         let spawned = Command::new("cmd")
-            .args(["/C", "start", "", "code", path])
+            .args(["/C", "start", "", "code", "-r", path])
             .spawn();
         if spawned.is_ok() {
             return Ok(());
@@ -88,12 +88,17 @@ pub fn open_vscode(path: &str) -> Result<()> {
 }
 
 pub fn open_focus_or_new(path: &str, launcher: &str, pid: u32) -> Result<()> {
-    if crate::window_focus::focus_agent_window(pid) {
-        return Ok(());
-    }
-
     match launcher {
-        "vscode" => open_vscode(path),
-        _ => open_terminal(path),
+        "vscode" => {
+            let _ = crate::window_focus::focus_agent_window(pid);
+            open_vscode(path)
+        }
+        _ => {
+            if crate::window_focus::focus_agent_window(pid) {
+                Ok(())
+            } else {
+                open_terminal(path)
+            }
+        }
     }
 }

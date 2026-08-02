@@ -9,6 +9,7 @@ pub struct AgentInfo {
     pub working_dir: String,
     pub state: String,
     pub launcher: String,
+    pub tool: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -175,15 +175,17 @@
   }
 
   async function resizeWindow(height, preserveCenterX = false) {
-    currentHeight = height;
     try {
-      await invoke('resize_window', {
+      const applied = await invoke('resize_window', {
         width: currentWidth,
         height,
         preserve_center_x: preserveCenterX,
       });
+      currentHeight = applied ?? height;
+      return applied ?? height;
     } catch (e) {
       console.error('Failed to resize window:', e);
+      return height;
     }
   }
 
@@ -250,6 +252,7 @@
     if (recent.length) addHighlight(recent);
     await animateResize(currentHeight, expandedHeight, 320, gen);
     if (gen !== generation) return;
+    expandedHeight = await resizeWindow(expandedHeight);
     showPanel = true;
   }
 
@@ -281,6 +284,7 @@
     showSettings = true;
     await animateResize(currentHeight, expandedHeight, 320, gen);
     if (gen !== generation) return;
+    expandedHeight = await resizeWindow(expandedHeight);
     showPanel = true;
   }
 
@@ -400,7 +404,9 @@
     if (newHeight == null) return;
     if (newHeight === expandedHeight) return;
     expandedHeight = newHeight;
-    resizeWindow(newHeight);
+    resizeWindow(newHeight).then((applied) => {
+      if (applied !== expandedHeight) expandedHeight = applied;
+    });
   }
 
   function endResizeHeight(e) {
@@ -474,8 +480,20 @@
 
   <div class="expanded-panel" class:visible={showPanel}>
     <div class="panel-header">
-      <span>Agent Monitor</span>
-      <span class="badge">{count} active</span>
+      <span class="panel-title">
+        <span class="title-dot {aggStatus}"></span>
+        <span>Agent Monitor</span>
+      </span>
+      <span class="status-legend">
+        {#each STATUS_PRIORITY as s}
+          {#if statusCounts[s]}
+            <span class="legend-item" title={STATUS_LABELS[s] || s}>
+              <span class="status-dot {s}"></span>
+              <span class="legend-count">{statusCounts[s]}</span>
+            </span>
+          {/if}
+        {/each}
+      </span>
     </div>
 
     {#if showSettings}
@@ -512,7 +530,7 @@
       </div>
     {:else if agents.length === 0}
       <div class="empty-state">
-        <span>No opencode agents detected</span>
+        <span>No agents detected</span>
         <span class="sub">Waiting for agent to start...</span>
       </div>
     {:else}
@@ -523,11 +541,16 @@
                 <span class="agent-pid">PID {agent.pid}</span>
                 <span class="agent-path">{formatPath(agent.working_dir)}</span>
               </div>
-              <div class="agent-status">
-                <span class="status-dot {agent.state}" class:flash={flashPids.has(agent.pid)}></span>
-                <span class="status-label">{STATUS_LABELS[agent.state] || agent.state}</span>
-                {#if agent.launcher}
-                  <span class="launcher-badge">{agent.launcher === 'vscode' ? 'VSCode' : 'Terminal'}</span>
+              <div class="agent-right">
+                <div class="agent-status">
+                  <span class="status-dot {agent.state}" class:flash={flashPids.has(agent.pid)}></span>
+                  <span class="status-label">{STATUS_LABELS[agent.state] || agent.state}</span>
+                  {#if agent.launcher}
+                    <span class="launcher-badge">{agent.launcher === 'vscode' ? 'VSCode' : 'Terminal'}</span>
+                  {/if}
+                </div>
+                {#if agent.tool}
+                  <span class="tool-badge">{agent.tool === 'claude' ? 'Claude' : 'opencode'}</span>
                 {/if}
               </div>
             </div>
@@ -710,6 +733,7 @@
     flex-direction: column;
     width: 100%;
     flex: 1;
+    min-height: 0;
     padding: 0 12px 12px;
     gap: 8px;
     opacity: 0;
@@ -768,15 +792,62 @@
     min-width: 0;
   }
 
-  .badge {
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
-    padding: 2px 8px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 500;
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .title-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
     flex-shrink: 0;
-    white-space: nowrap;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .title-dot.working,
+  .title-dot.running {
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  }
+
+  .title-dot.working {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .title-dot.idle {
+    background: #6b7280;
+  }
+
+  .title-dot.waiting_confirmation {
+    background: #fbbf24;
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  }
+
+  .title-dot.error {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  }
+
+  .status-legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .legend-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ccc;
   }
 
   .empty-state {
@@ -853,9 +924,19 @@
     max-width: 240px;
   }
 
+  .agent-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
   .agent-status {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
     min-width: 0;
   }
@@ -906,6 +987,17 @@
     font-size: 10px;
     color: #888;
     background: rgba(255, 255, 255, 0.06);
+    padding: 1px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .tool-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #e6a23c;
+    background: rgba(230, 162, 60, 0.14);
     padding: 1px 6px;
     border-radius: 6px;
     white-space: nowrap;

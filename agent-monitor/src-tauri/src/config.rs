@@ -19,6 +19,12 @@ pub(crate) fn agents_dir() -> PathBuf {
     config_dir().join("agents")
 }
 
+pub(crate) fn claude_sessions_dir() -> PathBuf {
+    let home = std::env::var("USERPROFILE")
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".claude").join("sessions")
+}
+
 fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }

@@ -1,11 +1,21 @@
 use crate::state::AgentInfo;
-use std::collections::HashMap;
+use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use windows::core::PWSTR;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Diagnostics::ToolHelp::*;
 use windows::Win32::System::Threading::*;
 
 const MAX_HOPS: usize = 5;
+const TARGET_EXES: [&str; 2] = ["opencode.exe", "claude.exe"];
+
+#[derive(Deserialize, Clone)]
+struct ClaudeSession {
+    #[serde(default)]
+    cwd: Option<String>,
+    #[serde(default)]
+    entrypoint: Option<String>,
+}
 
 fn detect_launcher_from_parent_chain(
     pid: u32,
@@ -28,6 +38,13 @@ fn detect_launcher_from_parent_chain(
         cur = parent;
     }
     "terminal".to_string()
+}
+
+fn claude_launcher(entrypoint: Option<&str>) -> String {
+    match entrypoint {
+        Some(ep) if ep.to_lowercase().contains("vscode") => "vscode".to_string(),
+        _ => "terminal".to_string(),
+    }
 }
 
 fn get_process_path(pid: u32) -> Option<String> {
@@ -147,6 +164,26 @@ fn parse_working_directory(cmdline: &str) -> Option<String> {
     None
 }
 
+fn read_claude_sessions() -> HashMap<u32, ClaudeSession> {
+    let mut sessions = HashMap::new();
+    let Ok(entries) = std::fs::read_dir(crate::config::claude_sessions_dir()) else {
+        return sessions;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(pid) = name.strip_suffix(".json").and_then(|s| s.parse::<u32>().ok()) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        if let Ok(sess) = serde_json::from_str::<ClaudeSession>(&content) {
+            sessions.insert(pid, sess);
+        }
+    }
+    sessions
+}
+
 pub fn scan_agents() -> Vec<AgentInfo> {
     let mut agents = Vec::new();
     let mut parent_map: HashMap<u32, (u32, String)> = HashMap::new();
@@ -167,7 +204,7 @@ pub fn scan_agents() -> Vec<AgentInfo> {
 
                 parent_map.insert(entry.th32ProcessID, (entry.th32ParentProcessID, name.clone()));
 
-                if name.to_lowercase() == "opencode.exe" {
+                if TARGET_EXES.contains(&name.to_lowercase().as_str()) {
                     let pid = entry.th32ProcessID;
                     let exe_path = get_process_path(pid).unwrap_or_default();
                     let cmdline = get_command_line(pid);
@@ -181,12 +218,19 @@ pub fn scan_agents() -> Vec<AgentInfo> {
                         })
                         .unwrap_or_default();
 
+                    let tool = if name.eq_ignore_ascii_case("claude.exe") {
+                        "claude"
+                    } else {
+                        "opencode"
+                    };
+
                     agents.push(AgentInfo {
                         pid,
                         exe_path: exe_path.clone(),
                         working_dir,
                         state: "running".to_string(),
                         launcher: "terminal".to_string(),
+                        tool: tool.to_string(),
                     });
                 }
 
@@ -199,50 +243,118 @@ pub fn scan_agents() -> Vec<AgentInfo> {
         let _ = CloseHandle(snapshot);
     }
 
+    let claude_sessions = read_claude_sessions();
+
+    let mut known_pids: HashSet<u32> = agents.iter().map(|a| a.pid).collect();
+
+    for (spid, sess) in &claude_sessions {
+        if known_pids.contains(spid) {
+            continue;
+        }
+        if !parent_map.contains_key(spid) {
+            continue;
+        }
+        let exe_path = get_process_path(*spid).unwrap_or_default();
+        agents.push(AgentInfo {
+            pid: *spid,
+            exe_path,
+            working_dir: sess.cwd.clone().unwrap_or_default(),
+            state: "running".to_string(),
+            launcher: claude_launcher(sess.entrypoint.as_deref()),
+            tool: "claude".to_string(),
+        });
+        known_pids.insert(*spid);
+    }
+
     for agent in &mut agents {
-        let (state, launcher) = crate::status_reader::read_state_and_launcher(agent.pid)
-            .unwrap_or(("running".to_string(), None));
-        agent.state = state;
-        agent.launcher = launcher
-            .unwrap_or_else(|| detect_launcher_from_parent_chain(agent.pid, &parent_map));
-        if let Some(cwd) = crate::status_reader::read_cwd(agent.pid) {
-            agent.working_dir = cwd;
+        if agent.tool == "claude" {
+            if let Some(sess) = claude_sessions.get(&agent.pid) {
+                if let Some(cwd) = sess.cwd.as_deref().filter(|c| !c.is_empty()) {
+                    agent.working_dir = cwd.to_string();
+                }
+                agent.launcher = claude_launcher(sess.entrypoint.as_deref());
+            }
+        }
+
+        if let Some(file) = crate::status_reader::read_all(agent.pid) {
+            agent.state = file.status.clone();
+            let launcher = file
+                .launcher
+                .filter(|l| l == "vscode" || l == "terminal");
+            agent.launcher = launcher
+                .unwrap_or_else(|| detect_launcher_from_parent_chain(agent.pid, &parent_map));
+            if let Some(cwd) = file.cwd.as_deref().filter(|c| !c.is_empty()) {
+                agent.working_dir = cwd.to_string();
+            }
+            if let Some(tool) = file.tool.as_deref() {
+                if tool == "claude" || tool == "opencode" {
+                    agent.tool = tool.to_string();
+                }
+            }
+        } else {
+            agent.launcher = detect_launcher_from_parent_chain(agent.pid, &parent_map);
         }
     }
-    prefer_status_file_source(&mut agents);
+    dedup_agents(&mut agents, &claude_sessions);
 
     agents
 }
 
-fn prefer_status_file_source(agents: &mut Vec<AgentInfo>) {
-    let mut has_status: HashMap<u32, bool> = HashMap::new();
-    for agent in agents.iter() {
-        has_status.insert(
-            agent.pid,
-            crate::status_reader::file_mtime(agent.pid).is_some(),
-        );
+fn dedup_agents(agents: &mut Vec<AgentInfo>, claude_sessions: &HashMap<u32, ClaudeSession>) {
+    let mut remove: HashSet<u32> = HashSet::new();
+
+    // Rule 1: multiple processes of the same tool in the same working_dir
+    // (e.g. opencode TUI + server, claude wrapper + session). Keep only the
+    // process(es) that are an actual status/session source; drop the rest.
+    let mut groups: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    for (i, agent) in agents.iter().enumerate() {
+        if !agent.working_dir.is_empty() {
+            groups
+                .entry((agent.tool.clone(), agent.working_dir.clone()))
+                .or_default()
+                .push(i);
+        }
+    }
+    for members in groups.values() {
+        if members.len() <= 1 {
+            continue;
+        }
+        let sources: Vec<bool> = members
+            .iter()
+            .map(|&i| {
+                let agent = &agents[i];
+                crate::status_reader::read_all(agent.pid).is_some()
+                    || (agent.tool == "claude" && claude_sessions.contains_key(&agent.pid))
+            })
+            .collect();
+        let source_count = sources.iter().filter(|&&s| s).count();
+        if source_count >= 1 && source_count < members.len() {
+            for (&i, &is_source) in members.iter().zip(sources.iter()) {
+                if !is_source {
+                    remove.insert(agents[i].pid);
+                }
+            }
+        }
     }
 
-    let demote: Vec<u32> = agents
+    // Rule 2: drop a claude process that is neither a session nor a status
+    // source while another claude session is present — these are short-lived
+    // bootstrap/helper processes that otherwise flash a duplicate entry.
+    let has_claude_session = agents
         .iter()
-        .filter(|agent| {
-            !agent.working_dir.is_empty()
-                && !has_status.get(&agent.pid).copied().unwrap_or(false)
-        })
-        .filter(|agent| {
-            agents.iter().any(|o| {
-                o.pid != agent.pid
-                    && !o.working_dir.is_empty()
-                    && o.working_dir == agent.working_dir
-                    && has_status.get(&o.pid).copied().unwrap_or(false)
-            })
-        })
-        .map(|agent| agent.pid)
-        .collect();
-
-    for agent in agents.iter_mut() {
-        if demote.contains(&agent.pid) {
-            agent.state = "running".to_string();
+        .any(|a| a.tool == "claude" && claude_sessions.contains_key(&a.pid));
+    if has_claude_session {
+        for agent in agents.iter() {
+            if agent.tool == "claude"
+                && !claude_sessions.contains_key(&agent.pid)
+                && crate::status_reader::file_mtime(agent.pid).is_none()
+            {
+                remove.insert(agent.pid);
+            }
         }
+    }
+
+    if !remove.is_empty() {
+        agents.retain(|a| !remove.contains(&a.pid));
     }
 }

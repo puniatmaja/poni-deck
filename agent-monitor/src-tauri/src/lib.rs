@@ -76,9 +76,28 @@ fn resize_window(
     width: f64,
     height: f64,
     preserve_center_x: Option<bool>,
-) -> Result<(), String> {
+) -> Result<u32, String> {
+    // Ruang aman di bawah (physical px): tinggi window dibatasi agar tepi bawah
+    // selalu berada di atas work-area monitor (taskbar), sehingga handle resize
+    // bawah (.resize-handle--bottom) tidak pernah keluar layar / tertutup taskbar.
+    const BOTTOM_MARGIN: i32 = 24;
+
     let window = app.get_webview_window("overlay").ok_or("window not found")?;
-    let size = tauri::PhysicalSize::new(width as u32, height as u32);
+
+    let current_height = window.outer_size().unwrap_or_default().height as i32;
+    let mut final_h = height as i32;
+    // Clamp hanya saat window bertambah tinggi; menyusut (collapse/resize ke atas) selalu diizinkan.
+    if final_h > current_height {
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let wa = monitor.work_area();
+            let top_y = window.outer_position().unwrap_or_default().y;
+            let work_bottom = wa.position.y + wa.size.height as i32;
+            let max_h = (work_bottom - top_y - BOTTOM_MARGIN).max(current_height);
+            final_h = final_h.min(max_h);
+        }
+    }
+    let final_h = final_h.max(1);
+    let size = tauri::PhysicalSize::new(width as u32, final_h as u32);
 
     if preserve_center_x == Some(true) {
         let pos = window.outer_position().map_err(|e| e.to_string())?;
@@ -103,7 +122,7 @@ fn resize_window(
     } else {
         window.set_size(size).map_err(|e| e.to_string())?;
     }
-    Ok(())
+    Ok(final_h as u32)
 }
 
 fn create_single_instance_mutex() -> Option<HANDLE> {
