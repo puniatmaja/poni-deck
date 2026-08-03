@@ -89,12 +89,11 @@ pub fn open_vscode(path: &str) -> Result<()> {
 
 pub fn open_focus_or_new(path: &str, launcher: &str, pid: u32) -> Result<()> {
     match launcher {
+        // Fokus window VSCode yang sudah running tempat agent berjalan.
+        // Jika tidak ada window yang cocok / VSCode tidak terbuka → jangan buka aplikasi baru.
         "vscode" => {
-            if crate::window_focus::focus_vscode_window(pid, path) {
-                Ok(())
-            } else {
-                open_vscode(path)
-            }
+            crate::window_focus::focus_vscode_window(pid, path);
+            Ok(())
         }
         _ => {
             if crate::window_focus::focus_agent_window(pid) {
