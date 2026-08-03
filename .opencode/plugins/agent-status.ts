@@ -24,6 +24,19 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let launcher = "terminal"
 let client: any = null
 
+function log(level: "debug" | "info" | "warn" | "error", message: string, extra: Record<string, unknown> = {}) {
+  client?.app
+    ?.log({
+      body: {
+        service: "agent-status",
+        level,
+        message,
+        extra: { pid, ...extra },
+      },
+    })
+    .catch(() => {})
+}
+
 function writeStatus(status: Status) {
   current = status
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -131,21 +144,19 @@ export const agentStatus: Plugin = async (ctx) => {
   process.on("exit", cleanup)
 
   return {
-    "tool.execute.before": async () => writeStatus("working"),
+    "tool.execute.before": async (input: { tool: string }) => {
+      if (input.tool === "question") {
+        log("debug", "question tool asked", { tool: input.tool })
+        writeStatus("waiting_confirmation")
+      } else {
+        writeStatus("working")
+      }
+    },
     "tool.execute.after": async () => writeStatus("working"),
 
     async event({ event }) {
       if (event.type === "permission.asked" || event.type === "permission.v2.asked" || event.type === "permission.replied" || event.type === "permission.v2.replied") {
-        client?.app
-          ?.log({
-            body: {
-              service: "agent-status",
-              level: "debug",
-              message: `permission event ${event.type}`,
-              extra: { pid },
-            },
-          })
-          .catch(() => {})
+        log("debug", `permission event ${event.type}`)
       }
       const status = mapEventToStatus(event.type, event.properties)
       if (status) writeStatus(status)

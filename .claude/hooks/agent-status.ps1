@@ -24,12 +24,13 @@ if ($null -eq $evt) { exit 0 }
 
 $hookEvent = [string]$evt.hook_event_name
 $cwd = [string]$evt.cwd
+$toolName = [string]$evt.tool_name
 
 # --- DEBUG: log every hook event to inspect the deny flow ---
 try {
     $debugLog = Join-Path $env:APPDATA 'agent-monitor\hooks-debug.log'
-    $dbgLine = "{0}  event={1}  pid={2}  tool_input={3}" -f `
-        (Get-Date).ToString('HH:mm:ss.fff'), $hookEvent, $PID, `
+    $dbgLine = "{0}  event={1}  tool={2}  pid={3}  tool_input={4}" -f `
+        (Get-Date).ToString('HH:mm:ss.fff'), $hookEvent, $toolName, $PID, `
         ([string]($evt.tool_input | ConvertTo-Json -Compress -ErrorAction SilentlyContinue))
     Add-Content -LiteralPath $debugLog -Value $dbgLine -ErrorAction SilentlyContinue
 } catch { }
@@ -49,6 +50,9 @@ $statusMap = @{
     'StopFailure'       = 'error'
 }
 $status = $statusMap[$hookEvent]
+if ($hookEvent -eq 'PreToolUse' -and $toolName -in @('AskUserQuestion', 'Question')) {
+    $status = 'waiting_confirmation'
+}
 
 # --- resolve the claude agent PID by walking the parent chain ---
 $agentPid = $null
