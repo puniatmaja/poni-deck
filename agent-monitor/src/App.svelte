@@ -52,6 +52,7 @@
     auto_start: false,
     sounds_enabled: false,
     sounds: {},
+    sound_loop: {},
   };
 
   let prevStates = new Map();      // pid -> state pada update sebelumnya
@@ -62,13 +63,16 @@
   let prevAggStatus = null;        // aggregate status pada update sebelumnya
   let firstApply = true;           // hindari flash saat pertama kali data dimuat
   let notifyPending = false;       // auto-collapse notifikasi sedang berjalan
-  let lastSoundAt = {};            // status -> timestamp bunyi terakhir (cooldown)
+  let activeSounds = new Map();    // pid -> HTMLAudioElement yang sedang diputar
+  let previewAudio = null;         // instance audio khusus preview di settings
+  let lastSoundAt = {};            // pid:status -> timestamp bunyi terakhir (cooldown)
 
   $: count = agents.length;
   $: aggStatus = aggregateStatus(agents);
   $: statusCounts = countStatuses(agents);
   $: displayText = statusSummary(statusCounts);
   $: isExpanded = isLocked;
+  $: if (!settings.sounds_enabled) stopAllSounds();
 
   function aggregateStatus(list) {
     for (const status of STATUS_PRIORITY) {
@@ -96,18 +100,77 @@
     return parts.join(' · ');
   }
 
-  function playStatusSound(status, force = false) {
+  function stopAgentSound(pid) {
+    const audio = activeSounds.get(pid);
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch (e) {
+      /* ignore */
+    }
+    activeSounds.delete(pid);
+  }
+
+  function stopAllSounds() {
+    for (const pid of Array.from(activeSounds.keys())) stopAgentSound(pid);
+    if (previewAudio) {
+      try {
+        previewAudio.pause();
+        previewAudio.currentTime = 0;
+      } catch (e) {
+        /* ignore */
+      }
+      previewAudio = null;
+    }
+  }
+
+  function playStatusSound(pid, status, force = false) {
     if (!force && !settings.sounds_enabled) return;
     const path = settings.sounds?.[status];
     if (!path) return;
     const now = Date.now();
-    if (!force && lastSoundAt[status] && now - lastSoundAt[status] < SOUND_COOLDOWN_MS) return;
-    lastSoundAt[status] = now;
+    const key = `${pid}:${status}`;
+    if (!force && lastSoundAt[key] && now - lastSoundAt[key] < SOUND_COOLDOWN_MS) return;
+    lastSoundAt[key] = now;
+    stopAgentSound(pid);
     try {
-      new Audio(convertFileSrc(path)).play();
+      const audio = new Audio(convertFileSrc(path));
+      audio.loop = !!settings.sound_loop?.[status];
+      activeSounds.set(pid, audio);
+      audio.play().catch(() => {
+        if (activeSounds.get(pid) === audio) activeSounds.delete(pid);
+      });
     } catch (e) {
       console.error('Sound playback failed:', e);
     }
+  }
+
+  function playPreviewSound(status) {
+    const path = settings.sounds?.[status];
+    if (!path) return;
+    if (previewAudio) {
+      try {
+        previewAudio.pause();
+        previewAudio.currentTime = 0;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    try {
+      const audio = new Audio(convertFileSrc(path));
+      audio.loop = !!settings.sound_loop?.[status];
+      previewAudio = audio;
+      audio.play();
+    } catch (e) {
+      console.error('Sound preview failed:', e);
+    }
+  }
+
+  function toggleLoop(status) {
+    const next = { ...settings.sound_loop };
+    next[status] = !settings.sound_loop?.[status];
+    settings.sound_loop = next;
   }
 
   async function pickSound(status) {
@@ -146,11 +209,15 @@
       if (prev !== undefined && prev !== a.state) {
         changedAt.set(a.pid, now);
         nextFlash.add(a.pid);
-        playStatusSound(a.state);
+        stopAgentSound(a.pid);
+        playStatusSound(a.pid, a.state);
       }
     }
     for (const pid of Array.from(prevStates.keys())) {
-      if (!nextPrev.has(pid)) changedAt.delete(pid);
+      if (!nextPrev.has(pid)) {
+        changedAt.delete(pid);
+        stopAgentSound(pid);
+      }
     }
     prevStates = nextPrev;
     flashPids = nextFlash;
@@ -526,6 +593,7 @@
   });
 
   onDestroy(() => {
+    stopAllSounds();
     if (unlistenUpdate) unlistenUpdate();
     if (unlistenEvent) unlistenEvent();
     if (unlistenSettings) unlistenSettings();
@@ -611,8 +679,14 @@
                 <button
                   class="mini-btn"
                   disabled={!settings.sounds[s]}
-                  on:click|stopPropagation={() => playStatusSound(s, true)}
+                  on:click|stopPropagation={() => playPreviewSound(s)}
                 >Play</button>
+                <button
+                  class="mini-btn"
+                  class:active={!!settings.sound_loop[s]}
+                  disabled={!settings.sounds[s]}
+                  on:click|stopPropagation={() => toggleLoop(s)}
+                >Loop</button>
                 <button
                   class="mini-btn"
                   disabled={!settings.sounds[s]}
@@ -1314,6 +1388,11 @@
   .mini-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.16);
     color: #fff;
+  }
+
+  .mini-btn.active {
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
   }
 
   .mini-btn:disabled {

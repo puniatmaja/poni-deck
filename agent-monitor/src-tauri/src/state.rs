@@ -22,6 +22,8 @@ pub struct Config {
     pub sounds_enabled: bool,
     #[serde(default)]
     pub sounds: HashMap<String, String>,
+    #[serde(default)]
+    pub sound_loop: HashMap<String, bool>,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             auto_start: false,
             sounds_enabled: false,
             sounds: HashMap::new(),
+            sound_loop: HashMap::new(),
         }
     }
 }
