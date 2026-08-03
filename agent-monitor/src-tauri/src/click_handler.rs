@@ -69,14 +69,14 @@ fn code_cli_on_path() -> bool {
 
 pub fn open_vscode(path: &str) -> Result<()> {
     if let Some(exe) = find_vscode() {
-        if Command::new(exe).arg("-r").arg(path).spawn().is_ok() {
+        if Command::new(exe).arg(path).spawn().is_ok() {
             return Ok(());
         }
     }
 
     if code_cli_on_path() {
         let spawned = Command::new("cmd")
-            .args(["/C", "start", "", "code", "-r", path])
+            .args(["/C", "start", "", "code", path])
             .spawn();
         if spawned.is_ok() {
             return Ok(());
