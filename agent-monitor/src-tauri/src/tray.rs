@@ -8,7 +8,7 @@ use tauri::{
     image::Image,
 };
 
-const STATUS_PRIORITY: [&str; 5] = ["error", "waiting_confirmation", "working", "running", "idle"];
+const STATUS_PRIORITY: [&str; 4] = ["error", "waiting_confirmation", "working", "idle"];
 
 fn create_icon() -> Image<'static> {
     let png_bytes = include_bytes!("../icons/icon.png");
@@ -82,7 +82,7 @@ fn summarize_statuses(count: usize, counts: &HashMap<String, usize>) -> String {
         .collect();
 
     if present.is_empty() {
-        return "running".to_string();
+        return "idle".to_string();
     }
 
     if present.len() == 1 {

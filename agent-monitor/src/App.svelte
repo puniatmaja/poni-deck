@@ -15,13 +15,12 @@
   const MIN_HEIGHT = 180;       // CSS px — floor usable, dikonversi × devicePixelRatio saat masuk jalur physical
   const MAX_HEIGHT = 520;       // PHYSICAL px — konsisten dengan resize_window (PhysicalSize)
 
-  const STATUS_PRIORITY = ['error', 'waiting_confirmation', 'working', 'running', 'idle'];
+  const STATUS_PRIORITY = ['error', 'waiting_confirmation', 'working', 'idle'];
   const STATUS_LABELS = {
     working: 'working',
     idle: 'idle',
     waiting_confirmation: 'waiting confirmation',
     error: 'error',
-    running: 'running',
   };
 
   const FLASH_MS = 650;           // durasi animasi flash dot saat status berubah
@@ -862,8 +861,7 @@
     transition: background 0.3s ease, box-shadow 0.3s ease;
   }
 
-  .indicator.active.working,
-  .indicator.active.running {
+  .indicator.active.working {
     background: #4ade80;
     --dot-color: #4ade80;
     box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
@@ -1001,8 +999,7 @@
     transition: background 0.3s ease, box-shadow 0.3s ease;
   }
 
-  .title-dot.working,
-  .title-dot.running {
+  .title-dot.working {
     background: #4ade80;
     box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
   }
@@ -1143,8 +1140,7 @@
     transition: background 0.3s ease;
   }
 
-  .status-dot.working,
-  .status-dot.running {
+  .status-dot.working {
     background: #4ade80;
     --dot-color: #4ade80;
   }

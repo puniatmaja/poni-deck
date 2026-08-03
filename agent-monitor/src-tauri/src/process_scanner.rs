@@ -228,7 +228,7 @@ pub fn scan_agents() -> Vec<AgentInfo> {
                         pid,
                         exe_path: exe_path.clone(),
                         working_dir,
-                        state: "running".to_string(),
+                        state: "idle".to_string(),
                         launcher: "terminal".to_string(),
                         tool: tool.to_string(),
                     });
@@ -259,7 +259,7 @@ pub fn scan_agents() -> Vec<AgentInfo> {
             pid: *spid,
             exe_path,
             working_dir: sess.cwd.clone().unwrap_or_default(),
-            state: "running".to_string(),
+            state: "idle".to_string(),
             launcher: claude_launcher(sess.entrypoint.as_deref()),
             tool: "claude".to_string(),
         });
