@@ -165,6 +165,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .setup(|app| {
             if let Some(window) = app.get_webview_window("overlay") {

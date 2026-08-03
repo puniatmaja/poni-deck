@@ -1,8 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
-  import { invoke } from '@tauri-apps/api/core';
+  import { invoke, convertFileSrc } from '@tauri-apps/api/core';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+  import { open } from '@tauri-apps/plugin-dialog';
 
   const appWindow = getCurrentWebviewWindow();
 
@@ -27,6 +28,7 @@
   const HIGHLIGHT_MS = 1200;      // durasi highlight item di expanded panel
   const MAX_STATUS_SEGMENTS = 3;  // maks segmen count per status di compact bar
   const NOTIFY_MS = 4000;         // durasi auto-expand notifikasi saat status berubah
+  const SOUND_COOLDOWN_MS = 800;  // jarak minimal antar bunyi untuk status yang sama
 
   let agents = [];
   let isLocked = false;
@@ -47,6 +49,8 @@
     notifications_enabled: true,
     always_on_top: true,
     auto_start: false,
+    sounds_enabled: false,
+    sounds: {},
   };
 
   let prevStates = new Map();      // pid -> state pada update sebelumnya
@@ -57,6 +61,7 @@
   let prevAggStatus = null;        // aggregate status pada update sebelumnya
   let firstApply = true;           // hindari flash saat pertama kali data dimuat
   let notifyPending = false;       // auto-collapse notifikasi sedang berjalan
+  let lastSoundAt = {};            // status -> timestamp bunyi terakhir (cooldown)
 
   $: count = agents.length;
   $: aggStatus = aggregateStatus(agents);
@@ -90,6 +95,46 @@
     return parts.join(' · ');
   }
 
+  function playStatusSound(status, force = false) {
+    if (!force && !settings.sounds_enabled) return;
+    const path = settings.sounds?.[status];
+    if (!path) return;
+    const now = Date.now();
+    if (!force && lastSoundAt[status] && now - lastSoundAt[status] < SOUND_COOLDOWN_MS) return;
+    lastSoundAt[status] = now;
+    try {
+      new Audio(convertFileSrc(path)).play();
+    } catch (e) {
+      console.error('Sound playback failed:', e);
+    }
+  }
+
+  async function pickSound(status) {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac'] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+      });
+      if (typeof selected === 'string' && selected) {
+        settings.sounds[status] = selected;
+        settings.sounds = { ...settings.sounds };
+      }
+    } catch (e) {
+      console.error('Failed to pick sound:', e);
+    }
+  }
+
+  function clearSound(status) {
+    if (!settings.sounds[status]) return;
+    const next = { ...settings.sounds };
+    delete next[status];
+    settings.sounds = next;
+  }
+
   function applyAgents(next) {
     const now = Date.now();
     const nextPrev = new Map();
@@ -100,6 +145,7 @@
       if (prev !== undefined && prev !== a.state) {
         changedAt.set(a.pid, now);
         nextFlash.add(a.pid);
+        playStatusSound(a.state);
       }
     }
     for (const pid of Array.from(prevStates.keys())) {
@@ -522,6 +568,40 @@
             class="toggle {settings.auto_start ? 'on' : ''}"
             on:click|stopPropagation={() => (settings.auto_start = !settings.auto_start)}
           ><span class="knob"></span></button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Sounds</span>
+          <button
+            class="toggle {settings.sounds_enabled ? 'on' : ''}"
+            on:click|stopPropagation={() => (settings.sounds_enabled = !settings.sounds_enabled)}
+          ><span class="knob"></span></button>
+        </div>
+        <div class="sounds-section">
+          <div class="sounds-title">Status sounds</div>
+          {#each STATUS_PRIORITY as s}
+            <div class="sound-row">
+              <span class="sound-label">
+                <span class="status-dot {s}"></span>
+                {STATUS_LABELS[s] || s}
+              </span>
+              <span class="sound-path" title={settings.sounds[s] || ''}>
+                {settings.sounds[s] ? formatPath(settings.sounds[s]) : 'none'}
+              </span>
+              <span class="sound-actions">
+                <button class="mini-btn" on:click|stopPropagation={() => pickSound(s)}>Browse</button>
+                <button
+                  class="mini-btn"
+                  disabled={!settings.sounds[s]}
+                  on:click|stopPropagation={() => playStatusSound(s, true)}
+                >Play</button>
+                <button
+                  class="mini-btn"
+                  disabled={!settings.sounds[s]}
+                  on:click|stopPropagation={() => clearSound(s)}
+                >Clear</button>
+              </span>
+            </div>
+          {/each}
         </div>
         <div class="settings-actions">
           <button class="save-btn" on:click|stopPropagation={saveSettings}>Save</button>
@@ -1127,5 +1207,77 @@
 
   .saved-msg.visible {
     opacity: 1;
+  }
+
+  .sounds-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sounds-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #777;
+    padding: 2px 10px;
+  }
+
+  .sound-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    min-width: 0;
+  }
+
+  .sound-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #ccc;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .sound-path {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sound-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .mini-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #bbb;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .mini-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+
+  .mini-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 </style>

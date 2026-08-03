@@ -18,6 +18,10 @@ pub struct Config {
     pub notifications_enabled: bool,
     pub always_on_top: bool,
     pub auto_start: bool,
+    #[serde(default)]
+    pub sounds_enabled: bool,
+    #[serde(default)]
+    pub sounds: HashMap<String, String>,
 }
 
 impl Default for Config {
@@ -27,6 +31,8 @@ impl Default for Config {
             notifications_enabled: true,
             always_on_top: true,
             auto_start: false,
+            sounds_enabled: false,
+            sounds: HashMap::new(),
         }
     }
 }
