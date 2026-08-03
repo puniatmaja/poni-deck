@@ -146,3 +146,151 @@ pub fn focus_agent_window(pid: u32) -> bool {
 
     false
 }
+
+/// Fokus window VSCode (Code.exe) yang me-launch agent `agent_pid`.
+/// Satu instance VSCode bisa memiliki beberapa window (folder & workspace) yang
+/// seluruhnya dimiliki oleh satu main `Code.exe` — jadi PID saja tidak cukup.
+/// Window target ditentukan dengan mencocokkan judul window VSCode terhadap
+/// segmen path `working_dir` (folder/workspace tempat agent berjalan).
+/// Mengembalikan `true` hanya jika window benar-benar ditemukan & diaktifkan.
+pub fn focus_vscode_window(agent_pid: u32, working_dir: &str) -> bool {
+    if agent_pid == 0 {
+        return false;
+    }
+
+    let map = build_parent_map();
+    let mut cur = agent_pid;
+    let mut code_pids: Vec<u32> = Vec::new();
+
+    for _ in 0..MAX_HOPS {
+        let Some(&(parent, ref name)) = map.get(&cur) else {
+            break;
+        };
+        if name.to_lowercase() == "code.exe" {
+            if !code_pids.contains(&parent) {
+                code_pids.push(parent);
+            }
+        }
+        if parent == cur || !map.contains_key(&parent) {
+            break;
+        }
+        cur = parent;
+    }
+
+    if code_pids.is_empty() {
+        return false;
+    }
+
+    let mut windows: Vec<WindowInfo> = Vec::new();
+    for pid in code_pids {
+        windows.extend(collect_visible_windows(pid));
+    }
+
+    let hwnd = match best_match_window(&windows, working_dir) {
+        Some(hwnd) => hwnd,
+        // Hanya ada satu window VSCode → aman fokus tanpa perlu mencocokkan judul.
+        None if windows.len() == 1 => windows[0].hwnd,
+        None => return false,
+    };
+    activate_window(hwnd)
+}
+
+struct WindowInfo {
+    hwnd: HWND,
+    title: String,
+}
+
+struct CollectCtx {
+    pid: u32,
+    windows: Vec<WindowInfo>,
+}
+
+unsafe extern "system" fn collect_window_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let ctx = &mut *(lparam.0 as *mut CollectCtx);
+
+    if !IsWindowVisible(hwnd).as_bool() {
+        return BOOL(1);
+    }
+
+    let mut win_pid = 0u32;
+    let _ = GetWindowThreadProcessId(hwnd, Some(&mut win_pid));
+    if win_pid != ctx.pid {
+        return BOOL(1);
+    }
+
+    let mut buf = [0u16; 512];
+    let len = GetWindowTextW(hwnd, &mut buf);
+    if len > 0 {
+        ctx.windows.push(WindowInfo {
+            hwnd,
+            title: String::from_utf16_lossy(&buf[..len as usize]),
+        });
+    }
+
+    BOOL(1)
+}
+
+fn collect_visible_windows(pid: u32) -> Vec<WindowInfo> {
+    let mut ctx = CollectCtx {
+        pid,
+        windows: Vec::new(),
+    };
+    unsafe {
+        let _ = EnumWindows(
+            Some(collect_window_cb),
+            LPARAM(&mut ctx as *mut CollectCtx as isize),
+        );
+    }
+    ctx.windows
+}
+
+/// Normalisasi judul window VSCode menjadi "identitas folder/workspace".
+/// Format umum: `[Administrator: ]<name> [(Workspace)] - Visual Studio Code`.
+fn normalize_title(title: &str) -> String {
+    let t = title.split(" - Visual Studio Code").next().unwrap_or(title);
+    let t = t.strip_prefix("Administrator: ").unwrap_or(t);
+    t.to_lowercase().replace(" (workspace)", "")
+}
+
+fn best_match_window(windows: &[WindowInfo], working_dir: &str) -> Option<HWND> {
+    let segments: Vec<String> = working_dir
+        .split(['/', '\\'])
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_lowercase())
+        .collect();
+    if segments.is_empty() {
+        return None;
+    }
+
+    let total = segments.len();
+    let mut best_score = 0;
+    let mut best_depth = usize::MAX;
+    let mut best_hwnd: Option<HWND> = None;
+
+    for w in windows {
+        let t = normalize_title(&w.title);
+        for (i, seg) in segments.iter().enumerate() {
+            let score = if t == *seg {
+                4
+            } else if t.starts_with(seg) || t.ends_with(seg) {
+                3
+            } else if t.contains(seg) {
+                2
+            } else {
+                0
+            };
+            if score == 0 {
+                continue;
+            }
+            // Prefer skor tertinggi; seri → segmen terdalam (paling spesifik).
+            let depth_from_end = total - 1 - i;
+            if score > best_score || (score == best_score && depth_from_end < best_depth) {
+                best_score = score;
+                best_depth = depth_from_end;
+                best_hwnd = Some(w.hwnd);
+            }
+        }
+    }
+
+    best_hwnd
+}

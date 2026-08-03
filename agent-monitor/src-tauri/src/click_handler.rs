@@ -90,8 +90,11 @@ pub fn open_vscode(path: &str) -> Result<()> {
 pub fn open_focus_or_new(path: &str, launcher: &str, pid: u32) -> Result<()> {
     match launcher {
         "vscode" => {
-            let _ = crate::window_focus::focus_agent_window(pid);
-            open_vscode(path)
+            if crate::window_focus::focus_vscode_window(pid, path) {
+                Ok(())
+            } else {
+                open_vscode(path)
+            }
         }
         _ => {
             if crate::window_focus::focus_agent_window(pid) {
