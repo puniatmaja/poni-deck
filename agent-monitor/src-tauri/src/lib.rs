@@ -76,32 +76,50 @@ fn resize_window(
     width: f64,
     height: f64,
     preserve_center_x: Option<bool>,
+    expand_up: Option<bool>,
 ) -> Result<u32, String> {
-    // Ruang aman di bawah (physical px): tinggi window dibatasi agar tepi bawah
-    // selalu berada di atas work-area monitor (taskbar), sehingga handle resize
-    // bawah (.resize-handle--bottom) tidak pernah keluar layar / tertutup taskbar.
-    const BOTTOM_MARGIN: i32 = 24;
+    // Ruang aman (physical px) antara tepi window dan tepi work-area monitor
+    // (taskbar), agar handle resize tidak pernah keluar layar / tertutup taskbar.
+    const EDGE_MARGIN: i32 = 24;
 
     let window = app.get_webview_window("overlay").ok_or("window not found")?;
 
     let current_height = window.outer_size().unwrap_or_default().height as i32;
+    let expand_up = expand_up.unwrap_or(false);
     let mut final_h = height as i32;
-    // Clamp hanya saat window bertambah tinggi; menyusut (collapse/resize ke atas) selalu diizinkan.
+
+    // Clamp hanya saat window bertambah tinggi; menyusut (collapse) selalu diizinkan.
     if final_h > current_height {
         if let Ok(Some(monitor)) = window.current_monitor() {
             let wa = monitor.work_area();
             let top_y = window.outer_position().unwrap_or_default().y;
-            let work_bottom = wa.position.y + wa.size.height as i32;
-            let max_h = (work_bottom - top_y - BOTTOM_MARGIN).max(current_height);
-            final_h = final_h.min(max_h);
+            if expand_up {
+                // Tumbuh ke atas: batasi agar tepi atas tidak naik melewati work-area.
+                let work_top = wa.position.y;
+                let max_h = (top_y - work_top - EDGE_MARGIN).max(current_height);
+                final_h = final_h.min(max_h);
+            } else {
+                // Tumbuh ke bawah: batasi agar tepi bawah tetap di atas work-area.
+                let work_bottom = wa.position.y + wa.size.height as i32;
+                let max_h = (work_bottom - top_y - EDGE_MARGIN).max(current_height);
+                final_h = final_h.min(max_h);
+            }
         }
     }
     let final_h = final_h.max(1);
     let size = tauri::PhysicalSize::new(width as u32, final_h as u32);
 
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    let old_size = window.outer_size().unwrap_or(size);
+
+    // Mode up: jangkar di tepi bawah — geser posisi agar tepi bawah tetap diam
+    // saat tinggi berubah (tumbuh ke atas maupun menyusut kembali).
+    let mut new_y = pos.y;
+    if expand_up {
+        new_y = pos.y - (final_h - old_size.height as i32);
+    }
+
     if preserve_center_x == Some(true) {
-        let pos = window.outer_position().map_err(|e| e.to_string())?;
-        let old_size = window.outer_size().unwrap_or(size);
         let dx = ((old_size.width as i64 - width as i64) / 2) as i32;
         let mut new_x = pos.x + dx;
 
@@ -117,10 +135,15 @@ fn resize_window(
 
         window.set_size(size).map_err(|e| e.to_string())?;
         window
-            .set_position(tauri::PhysicalPosition::new(new_x, pos.y))
+            .set_position(tauri::PhysicalPosition::new(new_x, new_y))
             .map_err(|e| e.to_string())?;
     } else {
         window.set_size(size).map_err(|e| e.to_string())?;
+        if new_y != pos.y {
+            window
+                .set_position(tauri::PhysicalPosition::new(pos.x, new_y))
+                .map_err(|e| e.to_string())?;
+        }
     }
     Ok(final_h as u32)
 }

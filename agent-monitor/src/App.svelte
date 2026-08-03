@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { invoke, convertFileSrc } from '@tauri-apps/api/core';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+  import { currentMonitor } from '@tauri-apps/api/window';
   import { open } from '@tauri-apps/plugin-dialog';
 
   const appWindow = getCurrentWebviewWindow();
@@ -215,17 +216,31 @@
   let currentHeight = DEFAULT_HEIGHT;
   let currentWidth = DEFAULT_WIDTH;
   let expandedHeight = DEFAULT_HEIGHT;   // target tinggi saat expanded (PHYSICAL px) — session state
+  let expandUp = false;                  // expand ke atas (window terlalu dekat tepi bawah)
 
   function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
   }
 
-  async function resizeWindow(height, preserveCenterX = false) {
+  async function computeExpandUp() {
+    try {
+      const monitor = await currentMonitor();
+      if (!monitor) return false;
+      const pos = await appWindow.outerPosition();
+      const workBottom = monitor.workArea.position.y + monitor.workArea.size.height;
+      return workBottom - pos.y < expandedHeight;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function resizeWindow(height, preserveCenterX = false, up = expandUp) {
     try {
       const applied = await invoke('resize_window', {
         width: currentWidth,
         height,
-        preserve_center_x: preserveCenterX,
+        preserveCenterX,
+        expandUp: up,
       });
       currentHeight = applied ?? height;
       return applied ?? height;
@@ -240,7 +255,7 @@
     return Math.ceil(bar?.getBoundingClientRect().height ?? 42);
   }
 
-  function animateResize(from, to, duration, gen) {
+  function animateResize(from, to, duration, gen, up = expandUp) {
     return new Promise((resolve) => {
       const t0 = performance.now();
       const step = (now) => {
@@ -250,7 +265,7 @@
         }
         const p = Math.min(1, (now - t0) / duration);
         const ease = 1 - Math.pow(1 - p, 3);
-        resizeWindow(Math.round(from + (to - from) * ease));
+        resizeWindow(Math.round(from + (to - from) * ease), false, up);
         if (p < 1) requestAnimationFrame(step);
         else resolve();
       };
@@ -291,14 +306,15 @@
     const gen = ++generation;
     clearTimeout(phaseTimer);
     isLocked = true;
+    expandUp = await computeExpandUp();
     const now = Date.now();
     const recent = agents
       .filter((a) => changedAt.has(a.pid) && now - changedAt.get(a.pid) < HIGHLIGHT_WINDOW)
       .map((a) => a.pid);
     if (recent.length) addHighlight(recent);
-    await animateResize(currentHeight, expandedHeight, 320, gen);
+    await animateResize(currentHeight, expandedHeight, 320, gen, expandUp);
     if (gen !== generation) return;
-    expandedHeight = await resizeWindow(expandedHeight);
+    expandedHeight = await resizeWindow(expandedHeight, false, expandUp);
     showPanel = true;
   }
 
@@ -313,7 +329,7 @@
       if (gen !== generation) return;
       const h = collapsedHeight();
       isLocked = false;
-      animateResize(currentHeight, Math.ceil(h * window.devicePixelRatio), 320, gen);
+      animateResize(currentHeight, Math.ceil(h * window.devicePixelRatio), 320, gen, expandUp);
     }, 250);
   }
 
@@ -327,10 +343,11 @@
     clearTimeout(notifyTimer);
     notifyPending = false;
     isLocked = true;
+    expandUp = await computeExpandUp();
     showSettings = true;
-    await animateResize(currentHeight, expandedHeight, 320, gen);
+    await animateResize(currentHeight, expandedHeight, 320, gen, expandUp);
     if (gen !== generation) return;
-    expandedHeight = await resizeWindow(expandedHeight);
+    expandedHeight = await resizeWindow(expandedHeight, false, expandUp);
     showPanel = true;
   }
 
@@ -390,7 +407,7 @@
     if (newWidth == null) return;
     if (newWidth === currentWidth) return;
     currentWidth = newWidth;
-    resizeWindow(currentHeight, true);
+    resizeWindow(currentHeight, true, expandUp);
   }
 
   function endResize(e) {
@@ -433,8 +450,9 @@
   function onResizeHeightMove(e) {
     if (!isResizing || !resizeStartHeight || e.pointerId !== resizeStartHeight.pointerId) return;
     const dy = (e.clientY - resizeStartHeight.startClientY) * window.devicePixelRatio;
+    const delta = expandUp ? -dy : dy;   // up-mode: handle di tepi atas, seret ke atas = tinggi bertambah
     resizeStartHeight.pendingHeight = Math.round(clamp(
-      resizeStartHeight.startHeight + dy,
+      resizeStartHeight.startHeight + delta,
       resizeStartHeight.minH,
       MAX_HEIGHT
     ));
@@ -450,7 +468,7 @@
     if (newHeight == null) return;
     if (newHeight === expandedHeight) return;
     expandedHeight = newHeight;
-    resizeWindow(newHeight).then((applied) => {
+    resizeWindow(newHeight, false, expandUp).then((applied) => {
       if (applied !== expandedHeight) expandedHeight = applied;
     });
   }
@@ -517,6 +535,7 @@
 <div
   class="dynamic-island"
   class:expanded={isExpanded}
+  class:expand-up={expandUp}
   bind:this={islandEl}
 >
   <div class="compact-bar" class:expanded={isExpanded} on:mousedown={startDrag} on:click={toggleLock}>
@@ -712,6 +731,22 @@
     border-color: transparent;
   }
 
+  .dynamic-island.expand-up {
+    flex-direction: column-reverse;
+  }
+
+  .dynamic-island.expand-up .compact-bar.expanded {
+    border-radius: 0 0 8px 8px;
+  }
+
+  .dynamic-island.expand-up .expanded-panel {
+    transform: translateY(8px);
+  }
+
+  .dynamic-island.expand-up .expanded-panel.visible {
+    transform: translateY(0);
+  }
+
   .resize-handle {
     position: absolute;
     top: 0;
@@ -837,6 +872,11 @@
     z-index: 5;
     opacity: 0;
     transition: opacity 0.15s ease;
+  }
+
+  .dynamic-island.expand-up .resize-handle--bottom {
+    bottom: auto;
+    top: 0;
   }
 
   .expanded-panel:hover .resize-handle--bottom {
