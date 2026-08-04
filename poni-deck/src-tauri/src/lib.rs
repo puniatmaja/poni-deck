@@ -154,7 +154,7 @@ fn create_single_instance_mutex() -> Option<HANDLE> {
     use windows::core::PCWSTR;
 
     unsafe {
-        let name: Vec<u16> = OsStr::new("AgentMonitor-SingleInstance")
+        let name: Vec<u16> = OsStr::new("PoniDeck-SingleInstance")
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
@@ -180,7 +180,7 @@ pub fn run() {
     let app_state = AppState::new();
 
     let _mutex_handle = create_single_instance_mutex().unwrap_or_else(|| {
-        eprintln!("Another instance of Agent Monitor is already running.");
+        eprintln!("Another instance of Poni Deck is already running.");
         std::process::exit(0);
     });
 

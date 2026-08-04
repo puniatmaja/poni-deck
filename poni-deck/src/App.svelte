@@ -614,7 +614,7 @@
     <div class="panel-header">
       <span class="panel-title">
         <span class="title-dot {aggStatus}"></span>
-        <span>Agent Monitor</span>
+        <span>Poni Deck</span>
       </span>
       <span class="status-legend">
         {#each STATUS_PRIORITY as s}

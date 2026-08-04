@@ -1,10 +1,10 @@
 [package]
-name = "agent-monitor"
+name = "poni-deck"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "agent_monitor"
+name = "poni_deck"
 crate-type = ["lib", "staticlib"]
 
 [build-dependencies]

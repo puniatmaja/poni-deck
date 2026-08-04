@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capability for the Agent Monitor",
+  "description": "Default capability for the Poni Deck",
   "windows": ["overlay"],
   "permissions": [
     "core:default",

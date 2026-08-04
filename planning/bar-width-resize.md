@@ -1,4 +1,4 @@
-# Planning: Resize Lebar Bar Collapsed di Overlay Dynamic Island (Agent Monitor)
+# Planning: Resize Lebar Bar Collapsed di Overlay Dynamic Island (Poni Deck)
 
 ---
 
@@ -71,7 +71,7 @@ Memberikan kemampuan mengubah **lebar window/island** dengan cara drag di ujung 
 
 **Pembagian tanggung jawab: JS (Svelte) untuk domain & interaksi, Rust hanya mengeksekusi resize + center-x secara atomik.**
 
-#### Frontend — `agent-monitor/src/App.svelte`
+#### Frontend — `poni-deck/src/App.svelte`
 
 **1. Ganti konstanta lebar dengan state mutable:**
 
@@ -285,7 +285,7 @@ function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 }
 ```
 
-#### Backend — `agent-monitor/src-tauri/src/lib.rs`
+#### Backend — `poni-deck/src-tauri/src/lib.rs`
 
 **Modifikasi command `resize_window` (lib.rs:76-82) — backward compatible, tidak ada command baru:**
 
@@ -446,7 +446,7 @@ Window melebar/menyempit dengan center-x tetap; bar & panel (saat expand) memaka
 - [ ] **T3: App.svelte — handle resize + pointer handlers** — markup `.resize-handle--left/right` di dalam `.compact-bar` dengan `data-no-drag`, `data-dir`, pointer event handlers (`startResize`/`onResizeMove`/`endResize`) dengan `setPointerCapture`, `stopPropagation`/`preventDefault`, cleanup `pointercancel`/`lostpointercapture`; logika delta (`dx * devicePixelRatio`, arah kiri dibalik, clamp saat hitung `pendingWidth`); **throttle/coalescing via `requestAnimationFrame`** (maks 1 invoke per frame, `rafId` guard) + **flush nilai final di `endResize`**; guard `newWidth === currentWidth` (di luar clamp, skip invoke redundan). Tambah guard defensif `if (isResizing) return;` di `toggleLock` dan `startDrag`. [M]
 - [ ] **T4: App.svelte — CSS** — `.compact-bar { position: relative; }`, `.resize-handle` (absolute, 10px, `cursor: ew-resize`, `touch-action: none`, `z-index`, opacity hover), `.compact-bar.expanded .resize-handle { display: none; }`, `.status-text` ellipsis (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0`), dan layout expanded MIN 160 (RQ2, §3): `.panel-header` title ellipsis + `min-width: 0` + `.badge { flex-shrink: 0; white-space: nowrap; }`; baris agent — `.agent-item { min-width: 0; gap: 8px }`, `.agent-info { min-width: 0 }`, `.agent-status { min-width: 0 }`, `.agent-status .status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0 }`, `.agent-status .launcher-badge { flex-shrink: 0; white-space: nowrap }`. Contoh aman @160px (100% DPI, `expanded-panel` padding 0 12px → lebar isi ±136px): `PID 1234` + path pendek + status `working` + badge `Terminal` muat utuh; `waiting confirmation` + `Terminal` → label ter-ellipsis (contoh `waiting confir…`), badge utuh, tanpa overflow. [S]
 - [ ] **T5: lib.rs — modifikasi `resize_window`** — tambah param `preserve_center_x: Option<bool>`; branch `Some(true)`: baca `outer_position` + `outer_size`, hitung `dx = (old_w - new_w) / 2` (i64 math), `new_x = pos.x + dx`, clamp ke monitor via `current_monitor()` (if `size.width <= monitor.width` → clamp x ke `[area.x, area.x + mw - size.width]`, else `x = area.x`), lalu `set_size` + `set_position(PhysicalPosition::new(new_x, pos.y))`. **Fallback monitor: `current_monitor()`** — window tidak berpindah monitor saat resize, jadi posisi window kini adalah referensi yang valid; menjembatani dua monitor dengan DPI berbeda dianggap toleransi/documented limitation (RQ6, lihat §7 Q7). Branch lain/`None`: `set_size` only (jalur existing). **Tidak** menyentuh `generate_handler!`. [M]
-- [ ] **T6: Verifikasi & build** — `cargo check` + `cargo build` di `agent-monitor/src-tauri`; `npm run build` di `agent-monitor`; jalankan test matrix AC (termasuk DPI scaling 125%/150% bila tersedia); regresi penuh fitur existing. [M]
+- [ ] **T6: Verifikasi & build** — `cargo check` + `cargo build` di `poni-deck/src-tauri`; `npm run build` di `poni-deck`; jalankan test matrix AC (termasuk DPI scaling 125%/150% bila tersedia); regresi penuh fitur existing. [M]
 
 **Dependency antar-task:**
 - T1 → T2 → T3 (state lebar dulu, baru resizeWindow, baru interaksi pointer).
@@ -493,9 +493,9 @@ Window melebar/menyempit dengan center-x tetap; bar & panel (saat expand) memaka
 
 ## 9. Referensi
 
-- [App.svelte — `WIDTH`, `resizeWindow`, `startDrag`, `expand`/`collapse`, `.compact-bar`](file:///D:/dev/experiment-poni-agent/agent-monitor/src/App.svelte)
-- [lib.rs — `resize_window` (lib.rs:76-82), `generate_handler!` (lib.rs:156)](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/lib.rs)
-- [tauri.conf.json — window overlay (baris 12-24)](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/tauri.conf.json)
+- [App.svelte — `WIDTH`, `resizeWindow`, `startDrag`, `expand`/`collapse`, `.compact-bar`](file:///D:/dev/experiment-poni-agent/poni-deck/src/App.svelte)
+- [lib.rs — `resize_window` (lib.rs:76-82), `generate_handler!` (lib.rs:156)](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/lib.rs)
+- [tauri.conf.json — window overlay (baris 12-24)](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/tauri.conf.json)
 - [Tauri v2 — PhysicalSize / PhysicalPosition / `current_monitor`](https://docs.rs/tauri/latest/tauri/)
 - [MDN — Pointer Events & `setPointerCapture`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent)
 - [Svelte — event modifiers (`stopPropagation`, `preventDefault`)](https://svelte.dev/docs/element-directives#on-eventname)

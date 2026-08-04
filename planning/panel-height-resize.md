@@ -1,4 +1,4 @@
-# Planning: Resize Tinggi Panel Expanded di Overlay Dynamic Island (Agent Monitor)
+# Planning: Resize Tinggi Panel Expanded di Overlay Dynamic Island (Poni Deck)
 
 ---
 
@@ -69,7 +69,7 @@ Memberikan kemampuan mengubah **tinggi window saat panel dalam keadaan expanded*
 
 ### Strategi Terpilih
 
-**Frontend-only: seluruh perubahan di `agent-monitor/src/App.svelte`. `lib.rs` TIDAK diubah.** Memanfaatkan command `resize_window` existing yang sudah generic width+height (lib.rs:76-109).
+**Frontend-only: seluruh perubahan di `poni-deck/src/App.svelte`. `lib.rs` TIDAK diubah.** Memanfaatkan command `resize_window` existing yang sudah generic width+height (lib.rs:76-109).
 
 #### 1. Ganti konstanta tinggi dengan state mutable
 
@@ -361,7 +361,7 @@ Window bertambah/berkurang tinggi; posisi x/y & lebar tetap; collapse→expand b
 - [ ] **T3: App.svelte — handler resize height** — tambah state `let resizeStartHeight = null;`; fungsi `startResizeHeight` (guard `!isLocked || !showPanel`, `if (isResizing) return;` defensif, `setPointerCapture`, hitung `minH` dalam physical px: `Math.max(Math.ceil(MIN_HEIGHT * window.devicePixelRatio), Math.ceil((collapsedHeight() + 40) * window.devicePixelRatio))`, simpan `{pointerId, startClientY, startHeight, minH, pendingHeight, rafId}`), `onResizeHeightMove` (delta `(clientY - startY) * devicePixelRatio`, clamp `[minH, MAX_HEIGHT]`, rAF schedule via `rafId`), `applyPendingHeight` (guard `newHeight === expandedHeight` skip invoke — banding dengan target session, bukan `currentWidth`; set `expandedHeight`; `resizeWindow(newHeight)`), `endResizeHeight` (cancelAnimationFrame + **flush** `applyPendingHeight()`, releasePointerCapture, reset `isResizing`/`resizeStartHeight`). Semua handler `e.preventDefault()` + `e.stopPropagation()` diawal. Jangan menyalin guard width secara asal (lihat koreksi Q5). [M]
 - [ ] **T4: App.svelte — markup handle** — tambah elemen `<span class="resize-handle--bottom" data-no-drag ...>` dengan handler pointer (`pointerdown/move/up/cancel/lostpointercapture`) + `on:click|stopPropagation` + `on:contextmenu|preventDefault` di dalam `.expanded-panel`, **setelah** `.panel-footer` (App.svelte:303-307). [S]
 - [ ] **T5: App.svelte — CSS** — tambah `position: relative;` pada `.expanded-panel` (App.svelte:431); `.expanded-panel:not(.visible) .resize-handle--bottom { display: none; }`; `.resize-handle--bottom` (absolute bottom 0 full-width, height 10px, `cursor: ns-resize`, `touch-action: none`, z-index 5, opacity hover/active 0→0.5→1); ubah `.agent-list` (App.svelte:495-501): `max-height: 140px` → `flex: 1 1 auto; min-height: 0;` (pertahankan `overflow-y: auto`). [S]
-- [ ] **T6: Verifikasi & build** — `cargo check` + `cargo build` di `agent-monitor/src-tauri` (pastikan **tanpa perubahan** — hanya validasi kompil); `npm run build` di `agent-monitor`; jalankan test matrix AC (termasuk **DPI scaling 125%/150% bila tersedia** — verifikasi AC7/AC9 tinggi minimum di DPR ≠ 1: tidak ada clip footer, `minH` = `⌈180 × DPR⌉`); regresi penuh fitur existing (toggle, drag window, width resize, klik item, scroll list, Open Terminal); verifikasi void kosong saat 1 agent di `MAX_HEIGHT` adalah yang diharapkan (EC17). [M]
+- [ ] **T6: Verifikasi & build** — `cargo check` + `cargo build` di `poni-deck/src-tauri` (pastikan **tanpa perubahan** — hanya validasi kompil); `npm run build` di `poni-deck`; jalankan test matrix AC (termasuk **DPI scaling 125%/150% bila tersedia** — verifikasi AC7/AC9 tinggi minimum di DPR ≠ 1: tidak ada clip footer, `minH` = `⌈180 × DPR⌉`); regresi penuh fitur existing (toggle, drag window, width resize, klik item, scroll list, Open Terminal); verifikasi void kosong saat 1 agent di `MAX_HEIGHT` adalah yang diharapkan (EC17). [M]
 
 **Dependency antar-task:**
 - T1 → T2 → T3 (state dulu, baru target expand, baru interaksi pointer).
@@ -404,10 +404,10 @@ Window bertambah/berkurang tinggi; posisi x/y & lebar tetap; collapse→expand b
 
 ## 9. Referensi
 
-- [App.svelte — `EXPANDED_HEIGHT` (:12, :54, :130), `currentHeight` (:54), `currentWidth` (:55), `clamp` (:57-59), `resizeWindow` (:61-72), `collapsedHeight` (:74-77), `animateResize` (:79-95), `expand`/`collapse` (:126-147), `toggleLock` (:149-153), `isResizing` (:156), width-resize handlers (:158-207), `.expanded-panel` (:272, CSS :431-448), `.panel-footer` (:303-307, CSS :598-603), `.agent-list` CSS (:495-501)](file:///D:/dev/experiment-poni-agent/agent-monitor/src/App.svelte)
-- [lib.rs — `resize_window` (:76-109), `generate_handler!` (:183-192), setup top-anchored y=0 (:152-160)](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/lib.rs)
+- [App.svelte — `EXPANDED_HEIGHT` (:12, :54, :130), `currentHeight` (:54), `currentWidth` (:55), `clamp` (:57-59), `resizeWindow` (:61-72), `collapsedHeight` (:74-77), `animateResize` (:79-95), `expand`/`collapse` (:126-147), `toggleLock` (:149-153), `isResizing` (:156), width-resize handlers (:158-207), `.expanded-panel` (:272, CSS :431-448), `.panel-footer` (:303-307, CSS :598-603), `.agent-list` CSS (:495-501)](file:///D:/dev/experiment-poni-agent/poni-deck/src/App.svelte)
+- [lib.rs — `resize_window` (:76-109), `generate_handler!` (:183-192), setup top-anchored y=0 (:152-160)](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/lib.rs)
 - [bar-width-resize.md — pola existing: rAF throttle + flush, disambiguation 3 lapis, `preserve_center_x`](file:///D:/dev/experiment-poni-agent/planning/bar-width-resize.md)
-- [tauri.conf.json — window overlay (baris 12-24)](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/tauri.conf.json)
+- [tauri.conf.json — window overlay (baris 12-24)](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/tauri.conf.json)
 - [MDN — Pointer Events & `setPointerCapture`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent)
 - [Svelte — event modifiers (`stopPropagation`, `preventDefault`)](https://svelte.dev/docs/element-directives#on-eventname)
 

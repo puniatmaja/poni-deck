@@ -1,4 +1,4 @@
-# Settings Page — Agent Monitor
+# Settings Page — Poni Deck
 
 ## Metadata
 
@@ -14,7 +14,7 @@
 
 ## 1. Tujuan
 
-Menambahkan halaman **Settings** di dalam overlay Agent Monitor untuk mengonfigurasi 3 opsi aplikasi: **notifikasi start/stop**, **always-on-top**, dan **auto-start** (start with Windows). Setting dipersist ke `%APPDATA%\agent-monitor\config.json` dan berlaku langsung setelah disimpan.
+Menambahkan halaman **Settings** di dalam overlay Poni Deck untuk mengonfigurasi 3 opsi aplikasi: **notifikasi start/stop**, **always-on-top**, dan **auto-start** (start with Windows). Setting dipersist ke `%APPDATA%\poni-deck\config.json` dan berlaku langsung setelah disimpan.
 
 ## 2. Scope
 
@@ -44,7 +44,7 @@ Menambahkan halaman **Settings** di dalam overlay Agent Monitor untuk mengonfigu
 ### Strategi Terpilih
 
 - **Config struct diperluas** (`state.rs`): hapus `click_action`, tambah `notifications_enabled: bool` (default `true`) dan `always_on_top: bool` (default `true`). `polling_interval_ms` tetap ada sebagai konstanta internal (tidak ditampilkan di UI).
-- **Persist**: reuse `config.rs::save_config`/`load_config` → `%APPDATA%\agent-monitor\config.json`. Format JSON backward-compatible: field baru punya default jika file lama tidak memilikinya (serde akan gagal tanpa `#[serde(default)]`, karena itu schema di-revisi).
+- **Persist**: reuse `config.rs::save_config`/`load_config` → `%APPDATA%\poni-deck\config.json`. Format JSON backward-compatible: field baru punya default jika file lama tidak memilikinya (serde akan gagal tanpa `#[serde(default)]`, karena itu schema di-revisi).
 - **Apply live**:
   - `always_on_top` → dipanggil di `set_config` via `window.set_always_on_top` + diterapkan saat `setup` dari config yang sudah di-load.
   - `notifications_enabled` → di-gate di `polling_loop` sebelum memanggil `notifier::notify_started`/`notify_stopped`.
@@ -139,7 +139,7 @@ N/A (lokal, tanpa service eksternal)
 
 - [x] Menu tray menampilkan **Settings...** yang membuka overlay + panel settings
 - [x] Panel settings menampilkan 3 toggle: Notifications, Always on top, Start with Windows
-- [x] Toggle Start with Windows menulis/menghapus registry `HKCU\...\Run\AgentMonitor`
+- [x] Toggle Start with Windows menulis/menghapus registry `HKCU\...\Run\PoniDeck`
 - [x] Toggle Always on top langsung mempengaruhi window (tanpa restart)
 - [x] Toggle Notifications benar-benar mengontrol munculnya notifikasi start/stop
 - [x] Tombol Save mempersist ke `config.json` dan menampilkan indikasi "Saved"

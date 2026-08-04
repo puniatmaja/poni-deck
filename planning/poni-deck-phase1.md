@@ -1,4 +1,4 @@
-# Planning: Agent Monitor Phase 1 — Simple Process Scanner
+# Planning: Poni Deck Phase 1 — Simple Process Scanner
 
 ---
 
@@ -71,7 +71,7 @@ Alasan:
 
 ```
 ┌─────────────────────────────────────────────┐
-│         agent-monitor-phase1 (Tauri App)      │
+│         poni-deck-phase1 (Tauri App)      │
 │                                               │
 │  ┌─────────────────────────────────────────┐  │
 │  │  ui_overlay/ (Frontend — WebView)        │  │
@@ -226,7 +226,7 @@ Alasan:
 
 | Dependency | Tujuan |
 |------------|--------|
-| File `config.json` di `%APPDATA%/agent-monitor-phase1/` | Settings: polling interval, click action, auto-start flag |
+| File `config.json` di `%APPDATA%/poni-deck-phase1/` | Settings: polling interval, click action, auto-start flag |
 | Windows Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | Auto-start registration |
 
 ---
@@ -258,7 +258,7 @@ Asumsi-asumsi yang digunakan dalam plan ini:
 - [ ] **T7: Click handler** — `click_handler.rs`: saat notifikasi diklik, parse action intent. Buka terminal (cmd/pwsh) di folder agent, atau `code .` jika VS Code terdeteksi. [S]
 - [ ] **T8: System tray** — `tray.rs`: implementasi Tauri system tray icon. Context menu: "Status: X agent running", "Open Folder...", "Auto-start: ON/OFF", "Quit". Ikon berubah sesuai status (ada/tidak ada agent). [M]
 - [ ] **T9: Single instance lock** — gunakan named mutex (Win32 `CreateMutexW`) untuk mencegah multiple instance aplikasi. [S]
-- [ ] **T10: Config & auto-start** — `config.rs`: baca/tulis `config.json` di `%APPDATA%/agent-monitor-phase1/`. Field: `polling_interval_ms`, `click_action` (terminal/code), `auto_start`. Toggle auto-start via registry `Run` key. [M]
+- [ ] **T10: Config & auto-start** — `config.rs`: baca/tulis `config.json` di `%APPDATA%/poni-deck-phase1/`. Field: `polling_interval_ms`, `click_action` (terminal/code), `auto_start`. Toggle auto-start via registry `Run` key. [M]
 - [ ] **T11: Packaging** — konfigurasi Tauri build untuk Windows `.msi` / `.exe`. Sign binary jika ada sertifikat. [M]
 
 **Dependency antar-task:**

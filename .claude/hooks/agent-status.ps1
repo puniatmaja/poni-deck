@@ -1,7 +1,7 @@
 # Claude Code hook: agent-status.ps1
 # Reads hook JSON from stdin, resolves the claude process PID (the parent of
-# this hook process), and writes a status file consumed by Agent Monitor at
-#   %APPDATA%\agent-monitor\agents\{claudePid}.json
+# this hook process), and writes a status file consumed by Poni Deck at
+#   %APPDATA%\poni-deck\agents\{claudePid}.json
 # Mirrors .opencode/plugins/agent-status.ts. Returns no decision; pure side effect.
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -28,7 +28,7 @@ $toolName = [string]$evt.tool_name
 
 # --- DEBUG: log every hook event to inspect the deny flow ---
 try {
-    $debugLog = Join-Path $env:APPDATA 'agent-monitor\hooks-debug.log'
+    $debugLog = Join-Path $env:APPDATA 'poni-deck\hooks-debug.log'
     $dbgLine = "{0}  event={1}  tool={2}  pid={3}  tool_input={4}" -f `
         (Get-Date).ToString('HH:mm:ss.fff'), $hookEvent, $toolName, $PID, `
         ([string]($evt.tool_input | ConvertTo-Json -Compress -ErrorAction SilentlyContinue))
@@ -67,7 +67,7 @@ for ($i = 0; $i -lt 5; $i++) {
 }
 if ($null -eq $agentPid) { exit 0 }
 
-$agentsDir = Join-Path $env:APPDATA 'agent-monitor\agents'
+$agentsDir = Join-Path $env:APPDATA 'poni-deck\agents'
 $target = Join-Path $agentsDir "$agentPid.json"
 
 # --- SessionEnd: drop the status file (monitor also cleans stale files) ---

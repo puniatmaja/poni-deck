@@ -130,8 +130,8 @@ function mapEventToStatus(type: string, props: any): Status | null {
 
 export const agentStatus: Plugin = async (ctx) => {
   dir = process.env.APPDATA
-    ? join(process.env.APPDATA, "agent-monitor", "agents")
-    : join(process.env.USERPROFILE ?? ".", ".config", "agent-monitor", "agents")
+    ? join(process.env.APPDATA, "poni-deck", "agents")
+    : join(process.env.USERPROFILE ?? ".", ".config", "poni-deck", "agents")
   cwd = ctx.directory ?? process.cwd()
   pid = process.pid
   launcher = detectLauncher()

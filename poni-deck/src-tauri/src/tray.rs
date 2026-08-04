@@ -43,7 +43,7 @@ pub fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
-        .tooltip("Agent Monitor — 0 agents · idle")
+        .tooltip("Poni Deck — 0 agents · idle")
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
                 "show" => show_overlay(app),
@@ -65,7 +65,7 @@ pub fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 pub fn update_tray_tooltip(app: &AppHandle, count: usize, counts: &HashMap<String, usize>) {
     if let Some(tray) = app.tray_by_id("main") {
         let summary = summarize_statuses(count, counts);
-        let tooltip = format!("Agent Monitor — {} agents · {}", count, summary);
+        let tooltip = format!("Poni Deck — {} agents · {}", count, summary);
         let _ = tray.set_tooltip(Some(&tooltip));
     }
 }

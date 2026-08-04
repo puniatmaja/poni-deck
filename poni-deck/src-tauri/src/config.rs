@@ -12,7 +12,7 @@ pub(crate) fn config_dir() -> PathBuf {
                 .unwrap_or_else(|_| ".".to_string());
             PathBuf::from(home).join(".config")
         });
-    base.join("agent-monitor")
+    base.join("poni-deck")
 }
 
 pub(crate) fn agents_dir() -> PathBuf {
@@ -81,7 +81,7 @@ pub fn set_auto_start(enabled: bool) -> Result<()> {
                 .chain(std::iter::once(0))
                 .collect();
 
-            let value_name: Vec<u16> = OsStr::new("AgentMonitor")
+            let value_name: Vec<u16> = OsStr::new("PoniDeck")
                 .encode_wide()
                 .chain(std::iter::once(0))
                 .collect();
@@ -99,7 +99,7 @@ pub fn set_auto_start(enabled: bool) -> Result<()> {
                 Some(bytes),
             );
         } else {
-            let value_name: Vec<u16> = OsStr::new("AgentMonitor")
+            let value_name: Vec<u16> = OsStr::new("PoniDeck")
                 .encode_wide()
                 .chain(std::iter::once(0))
                 .collect();

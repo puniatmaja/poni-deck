@@ -36,7 +36,7 @@ Deteksi konteks memakai **Plugin opencode sebagai sumber utama + fallback parent
 
 ### In Scope
 
-- [ ] **Plugin opencode** — `.opencode/plugins/agent-status.ts`: deteksi launcher via env vars proses opencode, tulis field `launcher` ke payload file status `{APPDATA}/agent-monitor/agents/{pid}.json`.
+- [ ] **Plugin opencode** — `.opencode/plugins/agent-status.ts`: deteksi launcher via env vars proses opencode, tulis field `launcher` ke payload file status `{APPDATA}/poni-deck/agents/{pid}.json`.
 - [ ] **Rust `status_reader.rs`** — parse field `launcher` (Option + whitelist), fungsi `read_state_and_launcher(pid) -> Option<(String, Option<String>)>` dengan TTL 30 detik yang sama dengan `read(pid)`; scanner memakai fungsi ini sehingga state + launcher dibaca dari file yang sama dalam **satu read per agent** (menggantikan pemakaian `read(pid)` di `scan_agents()`).
 - [ ] **Rust `state.rs`** — field `launcher: String` di `AgentInfo` (default `"terminal"`), ter-serialize ke frontend.
 - [ ] **Rust `process_scanner.rs`** — isi `launcher` dari status file; fallback parent-chain detection (walk `th32ParentProcessID` maks 5 hop, memakai `PROCESSENTRY32W`).
@@ -144,7 +144,7 @@ opencode process env (TERM_PROGRAM / VSCODE_*)
 Plugin agent-status.ts ──detectLauncher()──▶ launcher: "vscode" | "terminal"
    │  (debounce 250ms, heartbeat 10s, atomic write — tidak berubah)
    ▼
-%APPDATA%/agent-monitor/agents/{pid}.json  (payload + field "launcher")
+%APPDATA%/poni-deck/agents/{pid}.json  (payload + field "launcher")
    │
    ▼
 ┌────────────────────────────────────────────┐
@@ -321,7 +321,7 @@ Node perantara (`conhost.exe`, `OpenConsole.exe`, `WindowsTerminal.exe`, `explor
 - [ ] **T5: Rust `click_handler.rs` — `open_for_launcher`** — tambah `pub fn open_for_launcher(path: &str, launcher: &str, fallback_action: &str) -> Result<()>`: `"vscode"` → `open_vscode(path)`, `"terminal"` → `open_terminal(path)`, `_` → `open_path_with_action(path, fallback_action)`. Arm `_` (fallback global) menangani SEMUA nilai selain `"vscode"`/`"terminal"`, termasuk `""` dari `agent.launcher ?? ''` (resolusi Q17). [S]
 - [ ] **T6: Rust `lib.rs` — command `open_for_launcher`** — command Tauri baru yang membaca `config.click_action` sebagai fallback (lock `state.config`) lalu memanggil `click_handler::open_for_launcher`; daftarkan `open_for_launcher` di `generate_handler!` (lib.rs:142-150). Command `open_path`/`open_terminal`/`open_vscode` tetap dipertahankan. [S]
 - [ ] **T7: Svelte `App.svelte` — openFolder + indikator konteks** — (a) ubah `openFolder` menjadi `openFolder(agent)` → `invoke('open_for_launcher', { path: agent.working_dir, launcher: agent.launcher ?? '' })` (**`?? ''`**, BUKAN `|| 'terminal'` — undefined diteruskan apa adanya ke arm `_` Rust → fallback click_action; resolusi Q17); hapus pemanggilan `get_config` dari fungsi ini; (b) update call-site baris agent (`on:click|stopPropagation={() => openFolder(agent)}`); (c) tambah indikator kecil konteks di baris agent (mis. badge teks `VSCode`/`Terminal` di samping status, style konsisten dengan `.badge`/`.status-label` yang ada). Footer "Open Terminal" TIDAK diubah. [S]
-- [ ] **T8: Verifikasi manual & build** — `cargo check` + `cargo build` di `agent-monitor/src-tauri` (tanpa dependency baru); `npm run build`/dev di frontend; test matrix: (1) opencode di VSCode integrated terminal → klik buka VSCode, (2) opencode di cmd/pwsh/Windows Terminal → klik buka terminal, (3) tanpa plugin → parent-chain benar untuk kedua skenario, (4) file lama tanpa launcher → fallback, (5) `click_action="code"` + launcher `"terminal"` → tetap terminal, (6) footer Open Terminal masih eksplisit terminal, (7) dua agent launcher berbeda dalam satu panel. **Untuk jalur "launcher tak dikenal" (tidak reachable via UI karena scan menormalkan ke whitelist):** test via **invoke langsung** — panggil `invoke('open_for_launcher', { path, launcher: 'foo' })` dan `invoke('open_for_launcher', { path, launcher: '' })` → cek membuka sesuai `config.click_action` tanpa crash (resolusi Q19). [M]
+- [ ] **T8: Verifikasi manual & build** — `cargo check` + `cargo build` di `poni-deck/src-tauri` (tanpa dependency baru); `npm run build`/dev di frontend; test matrix: (1) opencode di VSCode integrated terminal → klik buka VSCode, (2) opencode di cmd/pwsh/Windows Terminal → klik buka terminal, (3) tanpa plugin → parent-chain benar untuk kedua skenario, (4) file lama tanpa launcher → fallback, (5) `click_action="code"` + launcher `"terminal"` → tetap terminal, (6) footer Open Terminal masih eksplisit terminal, (7) dua agent launcher berbeda dalam satu panel. **Untuk jalur "launcher tak dikenal" (tidak reachable via UI karena scan menormalkan ke whitelist):** test via **invoke langsung** — panggil `invoke('open_for_launcher', { path, launcher: 'foo' })` dan `invoke('open_for_launcher', { path, launcher: '' })` → cek membuka sesuai `config.click_action` tanpa crash (resolusi Q19). [M]
 
 **Dependency antar-task:**
 - T1 (plugin) independen — bisa paralel dengan T2–T7.
@@ -373,7 +373,7 @@ Node perantara (`conhost.exe`, `OpenConsole.exe`, `WindowsTerminal.exe`, `explor
 - [ ] **AC8:** Tombol footer "Open Terminal" tetap membuka terminal secara eksplisit (tidak terpengaruh launcher).
 - [ ] **AC9:** Panggil command `open_for_launcher` secara langsung dengan launcher tak dikenal (`"foo"` dan `""` dari `agent.launcher ?? ''`) → tidak crash, membuka sesuai `config.click_action` (arm `_`, fallback global) — verified via invoke langsung (T8), karena `scan_agents()` menormalkan launcher ke whitelist `{vscode, terminal}` sehingga nilai aneh tidak reachable lewat UI (resolusi Q19).
 - [ ] **AC10:** Walk parent-chain terminasi (tidak infinite loop) — diverifikasi manual pada chain normal, chain dengan parent mati, dan chain yang menyentuh PID `System`.
-- [ ] **AC11:** `cargo check` dan `cargo build` di `agent-monitor/src-tauri` sukses tanpa error dan **tanpa dependency baru**.
+- [ ] **AC11:** `cargo check` dan `cargo build` di `poni-deck/src-tauri` sukses tanpa error dan **tanpa dependency baru**.
 - [ ] **AC12:** Payload `agent-update` / `get_agents` menyertakan field `launcher` (ter-serialize oleh serde).
 - [ ] **AC13 (Q1):** `scan_agents()` membaca file status **sekali** per agent via `read_state_and_launcher` (tidak ada lagi panggilan `read(pid)` terpisah) — verified via code review; hasil poll konsisten (state & launcher dari versi file yang sama) walau plugin menulis ulang file di tengah polling.
 - [ ] **AC14 (Q2a):** Saat plugin tidak terpasang (EC16) dengan N agent, fallback parent-chain memakai **satu parent map per scan** (bukan N snapshot) — verified via code review + `cargo build`; hasil launcher untuk setiap agent benar untuk kedua skenario (VSCode vs terminal).
@@ -385,13 +385,13 @@ Node perantara (`conhost.exe`, `OpenConsole.exe`, `WindowsTerminal.exe`, `explor
 ## 9. Referensi
 
 - [Plugin opencode saat ini — `.opencode/plugins/agent-status.ts`](file:///D:/dev/experiment-poni-agent/.opencode/plugins/agent-status.ts)
-- [click_handler.rs — `open_terminal`, `open_vscode`, `open_path_with_action`](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/click_handler.rs)
-- [status_reader.rs — struct `StatusFile`, `read(pid)`, TTL 30 detik](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/status_reader.rs)
-- [state.rs — `AgentInfo` & `Config`](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/state.rs)
-- [process_scanner.rs — `scan_agents()`, `PROCESSENTRY32W`, `th32ParentProcessID`](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/process_scanner.rs)
-- [lib.rs — `polling_loop`, `generate_handler!`](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/lib.rs)
-- [App.svelte — `openFolder`, baris agent, footer](file:///D:/dev/experiment-poni-agent/agent-monitor/src/App.svelte)
-- [config.rs — `agents_dir()`](file:///D:/dev/experiment-poni-agent/agent-monitor/src-tauri/src/config.rs)
+- [click_handler.rs — `open_terminal`, `open_vscode`, `open_path_with_action`](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/click_handler.rs)
+- [status_reader.rs — struct `StatusFile`, `read(pid)`, TTL 30 detik](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/status_reader.rs)
+- [state.rs — `AgentInfo` & `Config`](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/state.rs)
+- [process_scanner.rs — `scan_agents()`, `PROCESSENTRY32W`, `th32ParentProcessID`](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/process_scanner.rs)
+- [lib.rs — `polling_loop`, `generate_handler!`](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/lib.rs)
+- [App.svelte — `openFolder`, baris agent, footer](file:///D:/dev/experiment-poni-agent/poni-deck/src/App.svelte)
+- [config.rs — `agents_dir()`](file:///D:/dev/experiment-poni-agent/poni-deck/src-tauri/src/config.rs)
 - [Plan referensi: `planning/agent-status-change.md`](agent-status-change.md) — asal plugin & file status
 - [windows crate — Toolhelp32Snapshot / PROCESSENTRY32W](https://docs.rs/windows/latest/windows/Win32/System/Diagnostics/ToolHelp/index.html)
 - [VSCode terminal env vars (`TERM_PROGRAM`)](https://code.visualstudio.com/docs/terminal/shell-integration)

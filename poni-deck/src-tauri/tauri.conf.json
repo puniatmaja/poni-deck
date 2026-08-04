@@ -1,7 +1,7 @@
 {
-  "productName": "Agent Monitor",
+  "productName": "Poni Deck",
   "version": "0.1.0",
-  "identifier": "com.opencode.agent-monitor",
+  "identifier": "com.opencode.poni-deck",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "overlay",
-        "title": "Agent Monitor",
+        "title": "Poni Deck",
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

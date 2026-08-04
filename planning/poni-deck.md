@@ -1,4 +1,4 @@
-# Planning: Multi-Agent Universal Dashboard — Agent Monitor
+# Planning: Multi-Agent Universal Dashboard — Poni Deck
 
 ---
 
@@ -74,11 +74,11 @@ Dashboard monitor menjadi **tool-agnostic**. Semua logika spesifik tool dipisahk
 │                     MONITOR DASHBOARD                        │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  @agent-monitor/app (Tauri + Svelte)                 │   │
+│  │  @poni-deck/app (Tauri + Svelte)                 │   │
 │  │  • WS Server (multi-client)                          │   │
 │  │  • Instance Registry                                 │   │
 │  │  • UI: Pill, InstanceList, DetailPanel               │   │
-│  │  └── all types from @agent-monitor/protocol          │   │
+│  │  └── all types from @poni-deck/protocol          │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                       ▲                                      │
 │                       │ WS (universal protocol)              │
@@ -92,13 +92,13 @@ Dashboard monitor menjadi **tool-agnostic**. Semua logika spesifik tool dipisahk
 │  └──────────────┘ └──────────┘ └────────┘ └──────────┘     │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  @agent-monitor/adapter-sdk                          │   │
+│  │  @poni-deck/adapter-sdk                          │   │
 │  │  • BaseAdapter trait                                 │   │
 │  │  • connect, register, emit, listen, heartbeat        │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  @agent-monitor/protocol                             │   │
+│  │  @poni-deck/protocol                             │   │
 │  │  • Universal types (Instance, Agent, Event, Command) │   │
 │  │  • Serde + Valico schema validation                  │   │
 │  └──────────────────────────────────────────────────────┘   │
@@ -110,8 +110,8 @@ Dashboard monitor menjadi **tool-agnostic**. Semua logika spesifik tool dipisahk
 1. **Monitor** memulai WebSocket server di `127.0.0.1:{port}` (default: `19785`).
 2. **Monitor** menulis koneksi info ke file bersama:
    - Lokasi: `{monitor_config_dir}/monitor.json`
-     - Windows: `%APPDATA%/agent-monitor/monitor.json`
-     - macOS/Linux: `~/.config/agent-monitor/monitor.json`
+     - Windows: `%APPDATA%/poni-deck/monitor.json`
+     - macOS/Linux: `~/.config/poni-deck/monitor.json`
    - Isi: `{ port: number, pid: number, startedAt: ISO8601 }`
 3. **Setiap instance** (via adapter) saat startup:
    - Membaca `monitor.json` → dapatkan WS URL `ws://127.0.0.1:{port}`
@@ -171,24 +171,24 @@ interface UniversalCommand {
 **Struktur Direktori (Rust workspace + Tauri + Svelte Monorepo):**
 
 ```
-agent-monitor/
+poni-deck/
 ├── Cargo.toml                    # Workspace root
-├── agent-monitor.code-workspace  # VS Code workspace (optional)
+├── poni-deck.code-workspace  # VS Code workspace (optional)
 ├── .gitignore
 ├── packages/
-│   ├── protocol/                   # agent-monitor-protocol (Rust crate)
+│   ├── protocol/                   # poni-deck-protocol (Rust crate)
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── types.rs          # Generic: Instance, Agent, Event, Command
 │   │       └── validator.rs      # Valico schema definitions
 │   │
-│   ├── adapter-sdk/                # agent-monitor-adapter-sdk (Rust crate)
+│   ├── adapter-sdk/                # poni-deck-adapter-sdk (Rust crate)
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs            # BaseAdapter trait definition
 │   │       └── types.rs          # Adapter-specific types
 │   │
-│   └── adapter-opencode/           # agent-monitor-adapter-opencode (Rust crate)
+│   └── adapter-opencode/           # poni-deck-adapter-opencode (Rust crate)
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs            # OpencodeAdapter implements BaseAdapter
@@ -196,7 +196,7 @@ agent-monitor/
 │           └── config.rs         # Opencode-specific config paths
 │
 └── apps/
-    └── monitor/                    # agent-monitor-app (Rust + Svelte)
+    └── monitor/                    # poni-deck-app (Rust + Svelte)
         ├── Cargo.toml
         ├── tauri.conf.json         # Tauri configuration
         ├── build.rs                # Build script
@@ -373,9 +373,9 @@ Frontend (Svelte + Svelte writable stores)
 
 | Dependency | Tujuan |
 |------------|--------|
-| `@agent-monitor/protocol` (Rust crate, workspace local) | Universal Rust types + Valico schemas untuk semua WS message — digunakan oleh monitor & semua adapter |
-| `@agent-monitor/adapter-sdk` (Rust crate, workspace local) | BaseAdapter trait — semua adapter tool implements trait ini |
-| `@agent-monitor/adapter-opencode` (Rust crate, workspace local) | Implementasi adapter untuk opencode — mapping opencode events → universal protocol |
+| `@poni-deck/protocol` (Rust crate, workspace local) | Universal Rust types + Valico schemas untuk semua WS message — digunakan oleh monitor & semua adapter |
+| `@poni-deck/adapter-sdk` (Rust crate, workspace local) | BaseAdapter trait — semua adapter tool implements trait ini |
+| `@poni-deck/adapter-opencode` (Rust crate, workspace local) | Implementasi adapter untuk opencode — mapping opencode events → universal protocol |
 | File `{monitor_config_dir}/monitor.json` | Discovery mechanism — port & PID monitor |
 | Tauri IPC protocol | Contract antara Rust backend ↔ Svelte frontend |
 
@@ -388,7 +388,7 @@ Asumsi-asumsi berikut berlaku untuk seluruh rencana ini:
 - **A1: Registrasi via file discovery** — mekanisme auto-registrasi default: monitor menulis `monitor.json` → adapter baca file → connect via WS.
 - **A2: Semua instance di localhost** — monitor dan semua instance berada di mesin yang sama (127.0.0.1).
 - **A3: Instance bisa jalan tanpa monitor** — semua tool tetap berfungsi normal meskipun monitor tidak ada.
-- **A4: monitor.json di direktori konfigurasi bersama** — semua adapter membaca dari lokasi yang sama (`~/.config/agent-monitor/monitor.json` atau `%APPDATA%/agent-monitor/monitor.json`).
+- **A4: monitor.json di direktori konfigurasi bersama** — semua adapter membaca dari lokasi yang sama (`~/.config/poni-deck/monitor.json` atau `%APPDATA%/poni-deck/monitor.json`).
 - **A5: Satu monitor per mesin** — hanya satu instance monitor yang boleh berjalan dalam satu mesin.
 - **A6: Port WebSocket tidak diblokir firewall lokal** — koneksi ke 127.0.0.1 tidak dihalangi.
 - **A7: User mengizinkan always-on-top** — OS support always-on-top window.
@@ -412,17 +412,17 @@ Asumsi-asumsi berikut berlaku untuk seluruh rencana ini:
 
 > **Effort estimasi:** S = < 1 jam, M = 1–3 jam, L = 3–8 jam, XL = > 8 jam
 
-### Package: `agent-monitor-protocol`
+### Package: `poni-deck-protocol`
 
-- [ ] **T0: Init Rust workspace + protocol crate** — setup cargo workspace, Cargo.toml untuk `agent-monitor-protocol`. Definisikan generic types: `Instance`, `Agent`, `AgentEvent`, `UniversalCommand` — semua dengan field `tool`. Buat Serde + Valico schemas untuk runtime validation. [M]
+- [ ] **T0: Init Rust workspace + protocol crate** — setup cargo workspace, Cargo.toml untuk `poni-deck-protocol`. Definisikan generic types: `Instance`, `Agent`, `AgentEvent`, `UniversalCommand` — semua dengan field `tool`. Buat Serde + Valico schemas untuk runtime validation. [M]
 - [ ] **T0b: Rust toolchain setup + CI pipeline** — setup rustup, rustfmt, clippy config, GitHub Actions CI untuk `cargo build` + `cargo test` + linting. [S]
 
-### Package: `agent-monitor-adapter-sdk`
+### Package: `poni-deck-adapter-sdk`
 
-- [ ] **T1: BaseAdapter trait** — definisikan trait Rust dengan method (semua parameter merujuk ke tipe dari `agent-monitor-protocol`): `connect(ws_url: &str)`, `register(instance: &Instance)`, `emit(event: &AgentEvent)`, `on_command(callback: impl Fn(UniversalCommand))`, `heartbeat(interval_ms: u64)`, `disconnect()`. Sediakan default implementation untuk heartbeat & reconnect dengan exponential backoff. [M]
+- [ ] **T1: BaseAdapter trait** — definisikan trait Rust dengan method (semua parameter merujuk ke tipe dari `poni-deck-protocol`): `connect(ws_url: &str)`, `register(instance: &Instance)`, `emit(event: &AgentEvent)`, `on_command(callback: impl Fn(UniversalCommand))`, `heartbeat(interval_ms: u64)`, `disconnect()`. Sediakan default implementation untuk heartbeat & reconnect dengan exponential backoff. [M]
 - [ ] **T1b: MockAdapter untuk testing** — buat implementasi `MockAdapter: BaseAdapter` di dalam `adapter-sdk/src/testing/`. MockAdapter menerima konfigurasi untuk mensimulasikan berbagai tool (opencode, claude-code, dll) tanpa tool aktual. Digunakan untuk integration test komponen dashboard. [M]
 
-### Package: `agent-monitor-adapter-opencode`
+### Package: `poni-deck-adapter-opencode`
 
 - [ ] **T2: Implementasi adapter untuk opencode** — buat `OpencodeAdapter: BaseAdapter`. Mapping opencode events ke universal schema:
   - opencode startup → `register` dengan `tool: "opencode"`
@@ -436,9 +436,9 @@ Asumsi-asumsi berikut berlaku untuk seluruh rencana ini:
 - [ ] **T5: Command mapping dari monitor → aksi opencode** — mapping command universal ke action opencode: `cancel`, `retry`, `pause`, `skip`, `deregister`. [M]
 - [ ] **T6: Graceful shutdown** — kirim `deregister` via WS (jika terkoneksi), cleanup pending file, tutup WS connection, hentikan retry loop. [S]
 
-### App: `agent-monitor-app` (Monitor Dashboard — Tauri + Svelte)
+### App: `poni-deck-app` (Monitor Dashboard — Tauri + Svelte)
 
-- [ ] **T7: Setup project scaffolding** — substeps: (a) setup Rust toolchain + cargo workspace root, (b) inisialisasi Tauri 2.0 project scaffold (Svelte standalone, bukan SvelteKit pure web; konfigurasi `svelte.config.js` dengan `adapter-tauri` dan `tauri.conf.json` dengan `build devPath: "http://localhost:1420"` dan `distDir`), (c) setup `Cargo.toml` workspace dependency ke `agent-monitor-protocol` crate, (d) konfigurasi `tauri.conf.json` permissions untuk WS localhost, file system, dan notification API. [M]
+- [ ] **T7: Setup project scaffolding** — substeps: (a) setup Rust toolchain + cargo workspace root, (b) inisialisasi Tauri 2.0 project scaffold (Svelte standalone, bukan SvelteKit pure web; konfigurasi `svelte.config.js` dengan `adapter-tauri` dan `tauri.conf.json` dengan `build devPath: "http://localhost:1420"` dan `distDir`), (c) setup `Cargo.toml` workspace dependency ke `poni-deck-protocol` crate, (d) konfigurasi `tauri.conf.json` permissions untuk WS localhost, file system, dan notification API. [M]
 - [ ] **T8: Implementasi WebSocket server** — `tokio-tungstenite` server bind ke port, handle multiple client connections, message parsing using Valico validation dari protocol crate. [L]
 - [ ] **T9: Universal instance registry** — HashMap menggunakan schema universal (Instance dari protocol crate). Handle register/deregister/heartbeat timeout (hapus stale setelah 3 missed pings). [M]
 - [ ] **T10: File discovery + notify watch + stale cleanup** — tulis `monitor.json` saat start, watch pending registrations dengan `notify`, atomic file write. [M]
@@ -492,7 +492,7 @@ T21 → setelah T20
 
 ## 8. Open Questions
 
-- [ ] **Q1: Di mana path default monitor config?** — **Keputusan: `~/.config/agent-monitor/` (Linux/macOS), `%APPDATA%/agent-monitor/` (Windows).** Berbeda dari lokasi opencode karena sifat universal.
+- [ ] **Q1: Di mana path default monitor config?** — **Keputusan: `~/.config/poni-deck/` (Linux/macOS), `%APPDATA%/poni-deck/` (Windows).** Berbeda dari lokasi opencode karena sifat universal.
 - [ ] **Q2: Protocol versioning scheme?** — **Keputusan: Semver.** Field `protocolVersion` di register message. Monitor tolak jika major version mismatch, kirim `version_mismatch` error. Minor/patch compatible.
 - [ ] **Q3: Bagaimana handle tool yang tidak punya konsep sub-agent?** — **Keputusan: Agent list bisa kosong atau berisi 1 agent (`main`).** Protocol mendukung agent array 0..N. Tool seperti Claude Code cukup register dengan 1 agent bernama "claude".
 - [ ] **Q4: Valico schema — strict atau passthrough?** — **Keputusan: Passthrough dengan warning log.** Field extra dari adapter tidak ditolak, hanya dicatat sebagai warning. Forward tetap ke renderer dengan flag `has_extra_fields`. (Gunakan `serde_json::Value` untuk mengakomodasi extra fields.)
@@ -606,7 +606,7 @@ T21 → setelah T20
 │  │  └─────────────────────────────────────────────────────────────┘   │
 │  │                                                                      │
 │  │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  │  SHARED DISCOVERY FILE (~/.config/agent-monitor/)            │  │
+│  │  │  SHARED DISCOVERY FILE (~/.config/poni-deck/)            │  │
 │  │  │  ┌──────────────────────┐  ┌────────────────────────────┐   │  │
 │  │  │  │  monitor.json        │  │  instances/                │   │  │
 │  │  │  │  { port, pid }       │  │  ├── 1234.json (pending)   │   │  │
@@ -615,7 +615,7 @@ T21 → setelah T20
 │  │  └──────────────────────────────────────────────────────────────┘  │
 │  │                                                                      │
 │  │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  │  agent-monitor-protocol (Rust crate)                     │  │
+│  │  │  poni-deck-protocol (Rust crate)                     │  │
 │  │  │  ┌──────────────────┐  ┌─────────────────┐                  │  │
 │  │  │  │ types.rs          │  │ validator.rs     │                  │  │
 │  │  │  │ Instance, Agent,  │  │ Valico schemas   │                  │  │
@@ -624,7 +624,7 @@ T21 → setelah T20
 │  │  └──────────────────────────────────────────────────────────────┘  │
 │  │                                                                      │
 │  │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  │  agent-monitor-adapter-sdk (Rust crate)                     │  │
+│  │  │  poni-deck-adapter-sdk (Rust crate)                     │  │
 │  │  │  ┌──────────────────────────────┐                            │  │
 │  │  │  │  BaseAdapter trait            │                            │  │
 │  │  │  │  ─ connect, register, emit   │                            │  │
@@ -675,6 +675,6 @@ T21 → setelah T20
 | `1.1.0` | `2026-07-26` | Planner  | Fix kontradiksi jumlah sub-fitur (9→12); tambah §6 Asumsi; resolve Q1–Q4 di §8; spesifikasi testing framework; AC6 pakai threshold objektif |
 | `1.2.0` | `2026-07-26` | Planner  | **Koreksi fundamental arsitektur:** Monitor bukan viewer 1 sesi, tapi dashboard multi-instance. Monitor jadi WS server, opencode jadi WS client. |
 | `1.3.0` | `2026-07-26` | Planner  | **Perbaikan gap reviewer:** Tambah periodic retry loop, EC1 perbaikan, EC10–EC12, T1a, A10–A12 |
-| `2.0.0` | `2026-07-26` | Planner  | **Re-arsitektur universal (tool-agnostic):** Ubah dari opencode-specific ke universal protocol + adapter pattern. Tambah packages: `@agent-monitor/protocol` (types + zod), `@agent-monitor/adapter-sdk` (BaseAdapter), `@agent-monitor/adapter-opencode` (implementasi). Semua tipe universal dengan field `tool`. Restruktur monorepo (packages/ + apps/). Monitor app jadi tool-agnostic, semua opencode-specific logic di adapter-opencode. Versi naik ke 2.0.0 — breaking change arsitektur. |
+| `2.0.0` | `2026-07-26` | Planner  | **Re-arsitektur universal (tool-agnostic):** Ubah dari opencode-specific ke universal protocol + adapter pattern. Tambah packages: `@poni-deck/protocol` (types + zod), `@poni-deck/adapter-sdk` (BaseAdapter), `@poni-deck/adapter-opencode` (implementasi). Semua tipe universal dengan field `tool`. Restruktur monorepo (packages/ + apps/). Monitor app jadi tool-agnostic, semua opencode-specific logic di adapter-opencode. Versi naik ke 2.0.0 — breaking change arsitektur. |
 | `2.2.0` | `2026-07-30` | Planner  | **Migrasi tech stack:** Mengganti framework desktop lama + npm ecosystem dengan Rust + Tauri. Mengubah tumpukan dari npm/web ke Rust workspace (Cargo). Menggunakan Svelte menggantikan framework UI lama sebagai frontend, tokio-tungstenite mengganti library WS lama, Valico mengganti library schema validation lama, notify mengganti file watcher lama, Serde mengganti TypeScript JSON parse. Tauri Command mengganti IPC bridge/contextBridge lama. Semua adapter diprogram dalam Rust crate. Dokumentasi referensi diperbarui. Perubahan breaking pada implementasi namun arsitektur universal (protocol + adapter) tetap dipertahankan. |
 | `2.3.0` | `2026-07-30` | Planner  | **Finalisasi migrasi Rust + Tauri (revisi post-review):** (1) Rewrite total §3 Struktur Direktori ke Rust workspace + Tauri + Svelte monorepo. (2) Rewrite §5 dependency table — hapus semua npm packages, ganti dengan crate Rust + Lisensi kolom. (3) Reverse §3 alternatives table (Tauri dipilih, Electron ditolak). (4) Rewrite §11 arsitektur diagram ke model Tauri (src-tauri/Rust backend + src/Svelte frontend + Tauri commands). (5) Tambah A15-A20 asumsi Tauri-specific (security model, always-on-top, system tray, draggable window, toolchain, ecosystem maturity). (6) Fix §8 Q4 & §9 AC13 — Zod → Valico/Serde. (7) Rewrite §10 referensi — hapus Electron/npm, tambah Rust/Tauri/Svelte/Valico/Serde/notify/chrono/cargo docs. (8) Split T16 [XL] → T16a-T16f (masing-masing [L]). (9) Detail T7 substeps (a-d) dan T20 (MockAdapter WS server integration test mechanism). (10) Tambah T0b (Rust toolchain + CI). (11) Update dependency graph untuk T16 split dan T11 removal. |
