@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-plugin-marketplace.json",
+  "name": "poni-deck-plugins",
+  "owner": {
+    "name": "Poni Deck Contributors",
+    "url": "https://github.com/anomalyco/opencode"
+  },
+  "plugins": [
+    {
+      "name": "poni-deck",
+      "source": "./",
+      "description": "Reports Claude Code session status to Poni Deck",
+      "version": "0.1.0",
+      "author": {
+        "name": "Poni Deck Contributors"
+      }
+    }
+  ]
+}

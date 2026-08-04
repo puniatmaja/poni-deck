@@ -1,0 +1,46 @@
+{
+  "name": "opencode-poni-deck",
+  "version": "0.1.0",
+  "description": "Opencode plugin that reports agent status to Poni Deck by writing status JSON files to %APPDATA%\\poni-deck\\agents\\{pid}.json",
+  "keywords": [
+    "opencode",
+    "plugin",
+    "poni-deck",
+    "poni",
+    "deck",
+    "agent",
+    "status",
+    "monitor"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.10",
+    "@types/node": "^24",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
