@@ -10,7 +10,7 @@
       "name": "poni-deck",
       "source": "./",
       "description": "Reports Claude Code session status to Poni Deck",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Poni Deck Contributors"
       }

@@ -1,6 +1,6 @@
 {
   "name": "claude-poni-deck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claude Code plugin that reports session status to Poni Deck via a PowerShell hook, writing status JSON to %APPDATA%\\poni-deck\\agents\\{pid}.json",
   "keywords": [
     "claude",

@@ -1,7 +1,7 @@
 {
   "name": "poni-deck",
   "description": "Reports Claude Code session status to Poni Deck by writing status JSON to %APPDATA%\\poni-deck\\agents\\{pid}.json",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Poni Deck Contributors",
     "url": "https://github.com/anomalyco/opencode"
@@ -13,7 +13,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -23,7 +32,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -33,7 +51,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -43,7 +70,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -53,7 +89,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -63,17 +108,36 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt|idle_prompt",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -83,7 +147,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ],
+            "async": true
           }
         ]
       }
@@ -93,7 +166,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-status.ps1"
+            ]
           }
         ]
       }

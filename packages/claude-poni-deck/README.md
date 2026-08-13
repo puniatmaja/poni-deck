@@ -62,6 +62,12 @@ as a marketplace directly. From inside the repo root:
 /reload-plugins
 ```
 
+> **Note on hook execution:** hooks must be registered in **exec form**
+> (`"command": "powershell.exe"` + `"args": ["-NoProfile", ...]`) with
+> `"async": true`. Using shell form (a bare `.ps1` path as `command`) or
+> leaving hooks synchronous makes Claude Code block on the hook for every
+> event, which breaks normal requests.
+
 ## Status file contract
 
 | Field       | Type     | Description                                        |
