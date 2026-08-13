@@ -1,0 +1,24 @@
+{
+  "name": "copilot-poni-deck",
+  "version": "0.1.0",
+  "description": "GitHub Copilot CLI plugin that reports session status to Poni Deck by writing status JSON to %APPDATA%\\poni-deck\\agents\\{pid}.json",
+  "keywords": [
+    "copilot",
+    "copilot-cli",
+    "plugin",
+    "hook",
+    "poni-deck",
+    "poni",
+    "deck",
+    "agent",
+    "status",
+    "monitor"
+  ],
+  "license": "MIT",
+  "files": [
+    "plugin.json",
+    "hooks",
+    "README.md",
+    "LICENSE"
+  ]
+}

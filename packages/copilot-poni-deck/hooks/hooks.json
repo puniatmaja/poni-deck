@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "Notification": [
+      {
+        "type": "command",
+        "matcher": "permission_prompt|elicitation_dialog",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "ErrorOccurred": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ],
+    "SessionEnd": [
+      {
+        "type": "command",
+        "bash": "./agent-status.sh",
+        "powershell": "./agent-status.ps1",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "copilot-poni-deck",
+  "version": "0.1.0",
+  "description": "GitHub Copilot CLI plugin that reports session status to Poni Deck by writing status JSON to %APPDATA%\\poni-deck\\agents\\{pid}.json",
+  "author": {
+    "name": "Poni Deck Contributors",
+    "url": "https://github.com/anomalyco/opencode"
+  },
+  "homepage": "https://github.com/anomalyco/opencode/tree/main/packages/copilot-poni-deck",
+  "repository": "https://github.com/anomalyco/opencode",
+  "license": "MIT",
+  "keywords": [
+    "copilot",
+    "copilot-cli",
+    "poni-deck",
+    "poni",
+    "deck",
+    "agent",
+    "status",
+    "monitor"
+  ]
+}
