@@ -1,0 +1,19 @@
+{
+  "name": "poni-deck-plugins",
+  "owner": {
+    "name": "Poni Deck Contributors",
+    "email": "hello@ponideck.dev"
+  },
+  "metadata": {
+    "description": "Plugins that report AI coding agent session status to Poni Deck",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "copilot-poni-deck",
+      "description": "Reports GitHub Copilot CLI session status to Poni Deck",
+      "version": "0.1.0",
+      "source": "plugins/copilot-poni-deck"
+    }
+  ]
+}

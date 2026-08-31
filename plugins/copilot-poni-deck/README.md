@@ -19,32 +19,46 @@ approve/deny tool calls or block the session.
 - Linux/macOS: `bash` + [`jq`](https://stedolan.github.io/jq/) (install with
   `brew install jq` / `apt install jq`; hooks no-op silently without it)
 
-## Install as a Copilot CLI plugin
+## Install from the Poni Deck plugin marketplace
 
-GitHub Copilot CLI installs plugins from a git repo, directory, or URL:
-
-```bash
-copilot plugins install https://github.com/anomalyco/opencode.git --plugin-dir ...  # or a local path
-```
+This repo ships a Copilot CLI plugin marketplace at `.github/plugin/marketplace.json`.
+Register the marketplace, then install the plugin:
 
 ```bash
-# from inside the repo (development install)
-copilot plugins install ./packages/copilot-poni-deck
+# from inside the repo, or use your GitHub `owner/repo` once pushed
+copilot plugin marketplace add ./            # or: copilot plugin marketplace add anomalyco/opencode
+copilot plugin install copilot-poni-deck@poni-deck-plugins
 ```
 
 or from inside an interactive session:
 
 ```
-/plugins install ./packages/copilot-poni-deck
+/plugin marketplace add .
+/plugin install copilot-poni-deck@poni-deck-plugins
 ```
 
-Restart Copilot CLI after installing. Verify with `/plugins list`.
+## Install as a Copilot CLI plugin (direct)
+
+GitHub Copilot CLI installs plugins from a git repo, directory, or URL:
+
+```bash
+# from inside the repo (development install)
+copilot plugins install ./plugins/copilot-poni-deck
+```
+
+```bash
+# from a GitHub repository
+copilot plugins install anomalyco/opencode:plugins/copilot-poni-deck
+```
+
+Restart Copilot CLI after installing. Verify with `copilot plugin list` (or
+`/plugins list` inside a session).
 
 The plugin declares its hooks in `hooks/hooks.json` (see
 [About hooks for GitHub Copilot](https://docs.github.com/en/copilot/concepts/agents/hooks)).
 If your Copilot CLI version resolves plugin hook paths relative to the plugin
 root instead of the `hooks/` directory, adjust the `bash`/`powershell` values
-to `./hooks/agent-status.sh` / `./hooks/agent-status.ps1`.
+in `hooks/hooks.json` to `./hooks/agent-status.sh` / `./hooks/agent-status.ps1`.
 
 ## Install as user-level hooks (alternative)
 
@@ -56,9 +70,9 @@ three files into your user hooks directory:
 
 ```bash
 mkdir -p ~/.copilot/hooks
-cp packages/copilot-poni-deck/hooks/agent-status.sh ~/.copilot/hooks/
-cp packages/copilot-poni-deck/hooks/agent-status.ps1 ~/.copilot/hooks/
-cp packages/copilot-poni-deck/hooks/hooks.json ~/.copilot/hooks/poni-deck-hooks.json
+cp plugins/copilot-poni-deck/hooks/agent-status.sh ~/.copilot/hooks/
+cp plugins/copilot-poni-deck/hooks/agent-status.ps1 ~/.copilot/hooks/
+cp plugins/copilot-poni-deck/hooks/hooks.json ~/.copilot/hooks/poni-deck-hooks.json
 ```
 
 Start (or restart) Copilot CLI. Hook configuration is loaded at startup.

@@ -7,7 +7,7 @@
     "name": "Poni Deck Contributors",
     "url": "https://github.com/anomalyco/opencode"
   },
-  "homepage": "https://github.com/anomalyco/opencode/tree/main/packages/copilot-poni-deck",
+  "homepage": "https://github.com/anomalyco/opencode/tree/main/plugins/copilot-poni-deck",
   "repository": "https://github.com/anomalyco/opencode",
   "license": "MIT",
   "keywords": [
@@ -19,5 +19,6 @@
     "agent",
     "status",
     "monitor"
-  ]
+  ],
+  "hooks": "hooks/hooks.json"
 }
