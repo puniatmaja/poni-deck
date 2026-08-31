@@ -9,6 +9,7 @@
   const appWindow = getCurrentWebviewWindow();
 
   const DEFAULT_WIDTH = 340;
+  const FALLBACK_COLLAPSED_WIDTH = 220;  // physical px — fallback jika pengukuran teks gagal
   const MIN_WIDTH = 160;
   const MAX_WIDTH = 640;
   const DEFAULT_HEIGHT = 260;   // PHYSICAL px — tinggi expanded default (eksis: EXPANDED_HEIGHT)
@@ -247,6 +248,16 @@
       }, FLASH_MS);
     }
     agents = next;
+    // Jika masih collapsed, sesuaikan lebar dengan teks baru (fit-content)
+    if (!isLocked && !isResizing && islandEl) {
+      requestAnimationFrame(() => {
+        const ideal = getCollapsedWidth();
+        if (ideal !== currentWidth) {
+          currentWidth = ideal;
+          invoke('resize_window', { width: ideal, height: currentHeight, preserveCenterX: true, expandUp: expandUp }).catch(() => {});
+        }
+      });
+    }
   }
 
   function notifyExpand() {
@@ -280,7 +291,8 @@
   }
 
   let currentHeight = DEFAULT_HEIGHT;
-  let currentWidth = DEFAULT_WIDTH;
+  let currentWidth = FALLBACK_COLLAPSED_WIDTH;    // live physical width — mulai collapsed (pill)
+  let expandedWidth = DEFAULT_WIDTH;     // target lebar saat expanded (physical px) — session state
   let expandedHeight = DEFAULT_HEIGHT;   // target tinggi saat expanded (PHYSICAL px) — session state
   let expandUp = false;                  // expand ke atas (window terlalu dekat tepi bawah)
 
@@ -316,9 +328,45 @@
     }
   }
 
+  async function resizeWindowGeneric(width, height, preserveCenterX = false, up = expandUp) {
+    try {
+      const applied = await invoke('resize_window', {
+        width,
+        height,
+        preserveCenterX,
+        expandUp: up,
+      });
+      currentWidth = width;
+      currentHeight = applied ?? height;
+      return applied ?? height;
+    } catch (e) {
+      console.error('Failed to resize window:', e);
+      return height;
+    }
+  }
+
   function collapsedHeight() {
     const bar = islandEl?.querySelector('.compact-bar');
     return Math.ceil(bar?.getBoundingClientRect().height ?? 42);
+  }
+
+  function getCollapsedWidth() {
+    const dpr = window.devicePixelRatio || 1;
+    const bar = islandEl?.querySelector('.compact-bar');
+    if (!bar) return FALLBACK_COLLAPSED_WIDTH;
+    const statusEl = bar.querySelector('.status-text');
+    const indicator = bar.querySelector('.indicator');
+    // scrollWidth = full content width walau overflow hidden (CSS px)
+    const textW = statusEl ? statusEl.scrollWidth : 80;
+    const indW = indicator ? indicator.offsetWidth : 8;
+    const gap = 8;          // gap di .compact-bar
+    const padding = 48;     // padding 24*2 di .compact-bar
+    const safety = 16;      // breathing room agar tidak mepet
+    const idealCSS = textW + indW + gap + padding + safety;
+    const idealPhysical = Math.ceil(idealCSS * dpr);
+    // collapsed tidak boleh lebih lebar dari expanded (expanded selalu lebih besar)
+    const maxAllowed = Math.min(MAX_WIDTH, expandedWidth);
+    return clamp(idealPhysical, MIN_WIDTH, maxAllowed);
   }
 
   function animateResize(from, to, duration, gen, up = expandUp) {
@@ -332,6 +380,31 @@
         const p = Math.min(1, (now - t0) / duration);
         const ease = 1 - Math.pow(1 - p, 3);
         resizeWindow(Math.round(from + (to - from) * ease), false, up);
+        if (p < 1) requestAnimationFrame(step);
+        else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  function animateWidth(from, to, duration, gen, up = expandUp) {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      const step = (now) => {
+        if (gen !== undefined && gen !== generation) {
+          resolve();
+          return;
+        }
+        const p = Math.min(1, (now - t0) / duration);
+        const ease = 1 - Math.pow(1 - p, 3);
+        const w = Math.round(from + (to - from) * ease);
+        currentWidth = w;
+        // fire-and-forget preserveCenterX=true agar center-x tetap
+        invoke('resize_window', { width: w, height: currentHeight, preserveCenterX: true, expandUp: up })
+          .then((applied) => {
+            if (applied != null) currentHeight = applied;
+          })
+          .catch(() => {});
         if (p < 1) requestAnimationFrame(step);
         else resolve();
       };
@@ -378,9 +451,17 @@
       .filter((a) => changedAt.has(a.pid) && now - changedAt.get(a.pid) < HIGHLIGHT_WINDOW)
       .map((a) => a.pid);
     if (recent.length) addHighlight(recent);
+    // Phase 1: perbesar width dulu (pill -> card) dengan center-x preservation
+    const targetW = expandedWidth;
+    if (currentWidth !== targetW) {
+      await animateWidth(currentWidth, targetW, 280, gen, expandUp);
+      if (gen !== generation) return;
+    }
+    // Phase 2: dropdown height
     await animateResize(currentHeight, expandedHeight, 320, gen, expandUp);
     if (gen !== generation) return;
-    expandedHeight = await resizeWindow(expandedHeight, false, expandUp);
+    expandedHeight = await resizeWindowGeneric(targetW, expandedHeight, false, expandUp);
+    currentWidth = targetW;
     showPanel = true;
   }
 
@@ -390,12 +471,26 @@
     clearTimeout(phaseTimer);
     showPanel = false;
     showSettings = false;
-    // Let the panel fade out, then shrink the window down to the bar.
-    phaseTimer = setTimeout(() => {
+    // Let the panel fade out, then shrink height, then shrink width sesuai teks.
+    phaseTimer = setTimeout(async () => {
       if (gen !== generation) return;
       const h = collapsedHeight();
+      const targetH = Math.ceil(h * window.devicePixelRatio);
+      // Phase 1: height shrink
+      await animateResize(currentHeight, targetH, 280, gen, expandUp);
+      if (gen !== generation) return;
+      // visual pill shape after height collapsed
       isLocked = false;
-      animateResize(currentHeight, Math.ceil(h * window.devicePixelRatio), 320, gen, expandUp);
+      // Phase 2: perkecil width (card -> pill) — ukuran pas dengan teks
+      const targetW = getCollapsedWidth();
+      if (currentWidth !== targetW) {
+        await animateWidth(currentWidth, targetW, 260, gen, expandUp);
+        if (gen !== generation) return;
+        // final ensure window size exactly target (height + narrow width, center preserved)
+        await resizeWindowGeneric(targetW, targetH, true, expandUp);
+      } else {
+        await resizeWindowGeneric(currentWidth, targetH, false, expandUp);
+      }
     }, 250);
   }
 
@@ -411,9 +506,16 @@
     isLocked = true;
     expandUp = await computeExpandUp();
     showSettings = true;
+    // Width first then height, same as expand
+    const targetW = expandedWidth;
+    if (currentWidth !== targetW) {
+      await animateWidth(currentWidth, targetW, 280, gen, expandUp);
+      if (gen !== generation) return;
+    }
     await animateResize(currentHeight, expandedHeight, 320, gen, expandUp);
     if (gen !== generation) return;
-    expandedHeight = await resizeWindow(expandedHeight, false, expandUp);
+    expandedHeight = await resizeWindowGeneric(targetW, expandedHeight, false, expandUp);
+    currentWidth = targetW;
     showPanel = true;
   }
 
@@ -473,6 +575,7 @@
     if (newWidth == null) return;
     if (newWidth === currentWidth) return;
     currentWidth = newWidth;
+    expandedWidth = newWidth;
     resizeWindow(currentHeight, true, expandUp);
   }
 
@@ -588,7 +691,10 @@
     });
 
     // Start collapsed: shrink the window so transparent area doesn't block clicks.
-    await resizeWindow(Math.ceil(collapsedHeight() * window.devicePixelRatio));
+    // width menyesuaikan teks (fit-content), height menyesuaikan bar
+    await new Promise((r) => requestAnimationFrame(() => r()));
+    currentWidth = getCollapsedWidth();
+    await resizeWindowGeneric(currentWidth, Math.ceil(collapsedHeight() * window.devicePixelRatio), false, false);
   });
 
   onDestroy(() => {
