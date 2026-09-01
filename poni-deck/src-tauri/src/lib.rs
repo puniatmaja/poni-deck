@@ -31,21 +31,30 @@ fn set_config(
     state: tauri::State<'_, AppState>,
     new_config: Config,
 ) -> Result<(), String> {
+    // Capture old auto_start BEFORE overwriting, so we can detect change
+    let old_auto_start = {
+        let cfg = state.config.lock().map_err(|e| e.to_string())?;
+        cfg.auto_start
+    };
+
+    // Force always_on_top = true regardless of what frontend sends
+    let mut to_save = new_config.clone();
+    to_save.always_on_top = true;
+
     {
         let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
-        *cfg = new_config.clone();
+        *cfg = to_save.clone();
     }
-    config::save_config(&new_config).map_err(|e| e.to_string())?;
+    config::save_config(&to_save).map_err(|e| e.to_string())?;
 
     if let Some(window) = app.get_webview_window("overlay") {
         window
-            .set_always_on_top(new_config.always_on_top)
+            .set_always_on_top(true)
             .map_err(|e| e.to_string())?;
     }
 
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
-    if cfg.auto_start != new_config.auto_start {
-        config::set_auto_start(new_config.auto_start).map_err(|e| e.to_string())?;
+    if old_auto_start != to_save.auto_start {
+        config::set_auto_start(to_save.auto_start).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -198,9 +207,8 @@ pub fn run() {
                     let x = (screen.width as i32 - win_size.width as i32).max(0) / 2;
                     let _ = window.set_position(tauri::PhysicalPosition::new(x, 0));
                 }
-                if let Ok(cfg) = app.state::<AppState>().config.lock() {
-                    let _ = window.set_always_on_top(cfg.always_on_top);
-                }
+                // Always on top is now hardcoded true (no config toggle)
+                let _ = window.set_always_on_top(true);
             }
 
             tray::create_tray(app)

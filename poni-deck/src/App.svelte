@@ -48,7 +48,7 @@
   let settings = {
     polling_interval_ms: 2000,
     notifications_enabled: true,
-    always_on_top: true,
+    always_on_top: true, // deprecated: kept for compat, window always on top now
     auto_start: false,
     sounds_enabled: false,
     sounds: {},
@@ -350,6 +350,36 @@
     return Math.ceil(bar?.getBoundingClientRect().height ?? 42);
   }
 
+  function getIdealExpandedHeight() {
+    const dpr = window.devicePixelRatio || 1;
+    const barH = collapsedHeight(); // CSS px
+    const minH = Math.max(
+      Math.ceil(MIN_HEIGHT * dpr),
+      Math.ceil((barH + 40) * dpr),
+    );
+    const EXTRA = 5; // breathing room agar scroll tidak muncul saat data sedikit
+    let totalCSS;
+    if (showSettings) {
+      const sb = islandEl?.querySelector('.settings-body');
+      let bodyH = 300; // fallback estimasi CSS — ditambah EXTRA nanti
+      if (sb && sb.scrollHeight > 20) {
+        if (sb.scrollHeight > 100 && sb.scrollHeight < 600) bodyH = sb.scrollHeight;
+      }
+      totalCSS = barH + 30 + 8 + bodyH + 8 + 12 + EXTRA;
+    } else if (agents.length === 0) {
+      const emptyH = 64;
+      totalCSS = barH + 30 + 8 + emptyH + 8 + 12 + EXTRA;
+    } else {
+      const headerH = 30;
+      const itemH = 52; // .agent-item ~52px (padding 16 + konten) — + EXTRA mencegah scroll tipis
+      const gapItem = 4;
+      const listH = agents.length * itemH + Math.max(0, agents.length - 1) * gapItem;
+      totalCSS = barH + headerH + 8 + listH + 8 + 12 + EXTRA;
+    }
+    const idealPhysical = Math.ceil(totalCSS * dpr);
+    return clamp(idealPhysical, minH, MAX_HEIGHT);
+  }
+
   function getCollapsedWidth() {
     const dpr = window.devicePixelRatio || 1;
     const bar = islandEl?.querySelector('.compact-bar');
@@ -445,6 +475,8 @@
     const gen = ++generation;
     clearTimeout(phaseTimer);
     isLocked = true;
+    // sesuaikan tinggi dengan konten (auto-fit) sebelum expand
+    expandedHeight = getIdealExpandedHeight();
     expandUp = await computeExpandUp();
     const now = Date.now();
     const recent = agents
@@ -504,8 +536,9 @@
     clearTimeout(notifyTimer);
     notifyPending = false;
     isLocked = true;
-    expandUp = await computeExpandUp();
     showSettings = true;
+    expandedHeight = getIdealExpandedHeight();
+    expandUp = await computeExpandUp();
     // Width first then height, same as expand
     const targetW = expandedWidth;
     if (currentWidth !== targetW) {
@@ -748,14 +781,7 @@
           ><span class="knob"></span></button>
         </div>
         <div class="setting-row">
-          <span class="setting-label">Always on top</span>
-          <button
-            class="toggle {settings.always_on_top ? 'on' : ''}"
-            on:click|stopPropagation={() => (settings.always_on_top = !settings.always_on_top)}
-          ><span class="knob"></span></button>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Start with Windows</span>
+          <span class="setting-label">Jalankan saat PC menyala</span>
           <button
             class="toggle {settings.auto_start ? 'on' : ''}"
             on:click|stopPropagation={() => (settings.auto_start = !settings.auto_start)}

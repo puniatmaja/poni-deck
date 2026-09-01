@@ -16,6 +16,9 @@ pub struct AgentInfo {
 pub struct Config {
     pub polling_interval_ms: u64,
     pub notifications_enabled: bool,
+    /// Deprecated: window is now always on top (hardcoded true). Kept for
+    /// backwards-compat so old config.json still deserializes.
+    #[serde(default = "default_true")]
     pub always_on_top: bool,
     pub auto_start: bool,
     #[serde(default)]
@@ -24,6 +27,10 @@ pub struct Config {
     pub sounds: HashMap<String, String>,
     #[serde(default)]
     pub sound_loop: HashMap<String, bool>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Config {

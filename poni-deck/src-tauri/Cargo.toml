@@ -2,6 +2,7 @@
 name = "poni-deck"
 version = "0.1.0"
 edition = "2021"
+authors = ["yoga puniatmaja"]
 
 [lib]
 name = "poni_deck"
